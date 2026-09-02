@@ -52,6 +52,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     .join('')
     .toUpperCase();
 
+  const toggleRecord = async () => {
+    if (!record) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        stream.getTracks().forEach(track => track.stop());
+        setRecord(true);
+        localStorage.setItem('auto_av_sos', 'true');
+      } catch (err) {
+        console.warn('Permission denied for auto-AV');
+        setRecord(false);
+        localStorage.setItem('auto_av_sos', 'false');
+      }
+    } else {
+      setRecord(false);
+      localStorage.setItem('auto_av_sos', 'false');
+    }
+  };
+
   const getLanguageLabel = (code: string) => {
     const map: Record<string, string> = {
       en: 'English',
@@ -148,7 +166,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <ChevronRight size={16} />
         </button>
 
-        <button className="setting-row" onClick={() => setRecord(!record)}>
+        <button className="setting-row" onClick={toggleRecord}>
           <span><Camera size={18} /></span>
           <b>{t('settings.auto_audio_video', 'Auto audio/video on SOS')}</b>
           <i className={`switch ${record ? 'on' : ''}`}><em /></i>

@@ -279,24 +279,7 @@ export function App() {
       new Notification('🚨 SOS Activated', { body: 'Your emergency contacts are being notified.', icon: '/favicon.ico' });
     }
 
-    // Auto audio/video recording
-    if (record && navigator.mediaDevices) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
-        const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '' });
-        recordedChunksRef.current = [];
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-        };
-        recorder.start(1000);
-        mediaRecorderRef.current = recorder;
-        setIsRecording(true);
-        notify('📹 Evidence recording started');
-      } catch (err) {
-        console.warn('Could not start media recording:', err);
-        notify('Camera/mic access denied — SOS continues without recording');
-      }
-    }
+    // Auto audio/video recording is now handled by SOSOverlay to support camera switching
 
     const location = await requestLocation();
 
@@ -350,26 +333,7 @@ export function App() {
       console.log("Wake Lock released on SOS cancel");
     }
 
-    // Stop and save evidence recording
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        document.body.appendChild(a);
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `sos-evidence-${new Date().toISOString().replace(/:/g, '-')}.webm`;
-        a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
-        recordedChunksRef.current = [];
-        notify('📹 SOS evidence video saved to your device');
-      };
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
-      mediaRecorderRef.current = null;
-      setIsRecording(false);
-    }
+    // Media recording is now handled by SOSOverlay completely
 
     // Browser notification for cancellation
     if (notifications && 'Notification' in window && Notification.permission === 'granted') {

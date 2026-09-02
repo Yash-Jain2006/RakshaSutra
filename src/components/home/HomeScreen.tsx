@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bell,
@@ -9,6 +9,7 @@ import {
   Navigation,
   Phone,
   Zap,
+  Info,
 } from 'lucide-react';
 import type { EmergencyContact } from '../../types/models';
 import { SectionTitle } from '../common/SectionTitle';
@@ -57,6 +58,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onStartFakeCall,
 }) => {
   // Dynamic greeting based on current hour — no "good night"
+  const [showNotif, setShowNotif] = useState(false);
+  const [notifications, setNotifications] = useState([
+    { id: 1, title: 'Welcome to Raksha Sutra!', time: 'Just now', unread: true },
+    { id: 2, title: 'Your profile is incomplete. Please add emergency contacts.', time: '2 hours ago', unread: true }
+  ]);
+
+  const unreadCount = notifications.filter(n => n.unread).length;
+
+  const markAllRead = () => {
+    setNotifications(notifications.map(n => ({ ...n, unread: false })));
+  };
+
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour >= 0 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
@@ -78,12 +91,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </span>
         </div>
         <div className="header-actions">
-          <button onClick={() => notify('No new alerts')} aria-label="Notifications">
+          <button onClick={() => setShowNotif(!showNotif)} aria-label="Notifications">
             <Bell size={20} />
-            <i />
+            {unreadCount > 0 && <i />}
           </button>
         </div>
       </header>
+
+      {/* Notification Panel */}
+      {showNotif && (
+        <div className="notification-panel">
+          <div className="notif-header">
+            <b>Notifications ({unreadCount})</b>
+            {unreadCount > 0 && (
+              <button onClick={markAllRead}>Mark all as read</button>
+            )}
+          </div>
+          <div className="notif-list">
+            {notifications.length === 0 ? (
+              <div className="notif-empty">No new alerts</div>
+            ) : (
+              notifications.map((n) => (
+                <div key={n.id} className={`notif-item ${n.unread ? 'unread' : ''}`}>
+                  <div className="notif-icon">
+                    <Info size={16} />
+                  </div>
+                  <div className="notif-content">
+                    <p>{n.title}</p>
+                    <span>{n.time}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Ad Carousel */}
       <AdCarousel notify={notify} />

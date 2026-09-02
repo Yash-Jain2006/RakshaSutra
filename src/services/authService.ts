@@ -74,7 +74,7 @@ export async function signUpWithPassword({
 }
 
 export async function signInWithGoogle() {
-  const redirectTo = import.meta.env.VITE_APP_URL || window.location.origin;
+  const redirectTo = window.location.origin || import.meta.env.VITE_APP_URL;
   const { error } = await configuredClient().auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo },

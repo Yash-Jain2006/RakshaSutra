@@ -6821,3 +6821,28 @@ input[type=number] {
   .ref-auth-legal { position: static; margin: 20px 18px; }
 }
 
+
+/* Notification Panel */
+.notification-panel { position: absolute; top: 60px; right: 20px; width: 280px; background: #fff; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border: 1px solid #e2e8f0; z-index: 100; overflow: hidden; display: flex; flex-direction: column; }
+.notif-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #e2e8f0; background: #fafafa; }
+.notif-header b { font-size: 13px; color: #0f172a; }
+.notif-header button { background: none; border: none; color: #6255ec; font-size: 11px; font-weight: 600; cursor: pointer; padding: 0; }
+.notif-list { max-height: 300px; overflow-y: auto; }
+.notif-item { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 12px; align-items: flex-start; text-align: left; background: #fff; border-left: 3px solid transparent; }
+.notif-item.unread { background: #f8f6ff; border-left-color: #6255ec; }
+.notif-item:last-child { border-bottom: none; }
+.notif-icon { background: #f1f5f9; padding: 8px; border-radius: 50%; color: #64748b; display: flex; align-items: center; justify-content: center; }
+.notif-item.unread .notif-icon { color: #6255ec; background: #eeeaff; }
+.notif-content { flex: 1; }
+.notif-content p { font-size: 12px; color: #0f172a; margin: 0 0 4px 0; line-height: 1.3; }
+.notif-content span { font-size: 10px; color: #64748b; }
+.notif-empty { padding: 24px; text-align: center; color: #64748b; font-size: 12px; }
+/* SOS Recording Indicator */
+.recording-status { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #ff4444; padding: 12px 16px; background: rgba(255,68,68,0.1); border-radius: 8px; flex: 1; justify-content: center; }
+.rec-indicator { width: 10px; height: 10px; border-radius: 50%; background: #ff4444; animation: recPulse 1.5s infinite; }
+@keyframes recPulse { 0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.4); } 70% { box-shadow: 0 0 0 10px rgba(255,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); } }
+/* Permission Indicator */
+.perm-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.perm-dot.granted { background: #10b981; animation: pulse-green 1.5s infinite; }
+.perm-dot.denied { background: #ff4444; }
+@keyframes pulse-green { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); } 70% { box-shadow: 0 0 0 6px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
