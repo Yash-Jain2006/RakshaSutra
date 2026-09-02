@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import {
   AlertTriangle,
   Bell,
@@ -59,6 +60,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   // Dynamic greeting based on current hour — no "good night"
   const [showNotif, setShowNotif] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const bellRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showNotif) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        notifRef.current && !notifRef.current.contains(e.target as Node) &&
+        bellRef.current && !bellRef.current.contains(e.target as Node)
+      ) {
+        setShowNotif(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showNotif]);
+
   const [notifications, setNotifications] = useState([
     { id: 1, title: 'Welcome to Raksha Sutra!', time: 'Just now', unread: true },
     { id: 2, title: 'Your profile is incomplete. Please add emergency contacts.', time: '2 hours ago', unread: true }
@@ -68,6 +86,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const markAllRead = () => {
     setNotifications(notifications.map(n => ({ ...n, unread: false })));
+  };
+
+  const deleteNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
   const greeting = useMemo(() => {
@@ -91,7 +113,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </span>
         </div>
         <div className="header-actions">
-          <button onClick={() => setShowNotif(!showNotif)} aria-label="Notifications">
+          <button ref={bellRef} onClick={() => setShowNotif(!showNotif)} aria-label="Notifications">
             <Bell size={20} />
             {unreadCount > 0 && <i />}
           </button>
@@ -100,7 +122,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* Notification Panel */}
       {showNotif && (
-        <div className="notification-panel">
+        <div className="notification-panel" ref={notifRef}>
           <div className="notif-header">
             <b>Notifications ({unreadCount})</b>
             {unreadCount > 0 && (
@@ -120,6 +142,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     <p>{n.title}</p>
                     <span>{n.time}</span>
                   </div>
+                  <button className="notif-delete" onClick={() => deleteNotification(n.id)} aria-label="Delete notification">
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))
             )}

@@ -231,31 +231,51 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
                 : 'No contacts added yet. Add contacts in settings.'}
             </small>
           </div>
-          <span className="status-tag queued">
+          <i className="queued">
             {isOffline ? 'Pending (Offline)' : 'Queued'}
-          </span>
+          </i>
         </div>
 
         {/* Rakshak Matching Status */}
         {rakshakDeliveries.length > 0 ? (
-          rakshakDeliveries.map((delivery) => (
-            <div className="sos-item" key={delivery.id}>
-              <span>
-                <ShieldCheck size={18} />
-              </span>
-              <div>
-                <b>{delivery.recipient_name || 'Nearby Rakshak'}</b>
-                <small>{delivery.recipient_sub || 'Verified Volunteer'}</small>
-              </div>
-              <span className={`status-tag ${delivery.status}`}>
-                {delivery.status === 'acknowledged'
-                  ? 'Accepted'
-                  : delivery.status === 'sent'
-                    ? 'Alert Sent'
-                    : 'Queued'}
-              </span>
-            </div>
-          ))
+          (() => {
+            const named = rakshakDeliveries.filter((d) => d.recipient_name);
+            const unnamed = rakshakDeliveries.filter((d) => !d.recipient_name);
+            return (
+              <>
+                {named.map((delivery) => (
+                  <div className="sos-item" key={delivery.id}>
+                    <span>
+                      <ShieldCheck size={18} />
+                    </span>
+                    <div>
+                      <b>{delivery.recipient_name}</b>
+                      <small>{delivery.recipient_sub || 'Verified Volunteer'}</small>
+                    </div>
+                    <i className={delivery.status}>
+                      {delivery.status === 'acknowledged'
+                        ? 'Accepted'
+                        : delivery.status === 'sent'
+                          ? 'Alert Sent'
+                          : 'Queued'}
+                    </i>
+                  </div>
+                ))}
+                {unnamed.length > 0 && (
+                  <div className="sos-item">
+                    <span>
+                      <ShieldCheck size={18} />
+                    </span>
+                    <div>
+                      <b>{unnamed.length} Nearby Rakshak{unnamed.length > 1 ? 's' : ''}</b>
+                      <small>Searching verified volunteers nearby...</small>
+                    </div>
+                    <i className="queued">Searching</i>
+                  </div>
+                )}
+              </>
+            );
+          })()
         ) : (
           <div className="sos-item no-rakshaks">
             <span>
@@ -269,7 +289,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
                   : 'Searching nearest verified Rakshaks within 2.5 km...'}
               </small>
             </div>
-            <span className="status-tag queued">Searching</span>
+            <i className="queued">Searching</i>
           </div>
         )}
       </div>
