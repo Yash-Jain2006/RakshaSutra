@@ -1,23 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   AlertTriangle,
   Bell,
   CircleHelp,
-  Coffee,
-  Fuel,
   HeartHandshake,
-  Hospital,
   Map as MapIcon,
   MapPin,
   Navigation,
   Phone,
-  Settings,
-  Shield,
   Zap,
 } from 'lucide-react';
 import type { EmergencyContact } from '../../types/models';
 import { SectionTitle } from '../common/SectionTitle';
 import { JourneyBanner } from '../journey/JourneyBanner';
+import { AdCarousel } from './AdCarousel';
 
 interface HomeScreenProps {
   displayName: string;
@@ -34,6 +30,7 @@ interface HomeScreenProps {
   sosPressing: boolean;
   requestLocation: () => void;
   locationState: string;
+  cityLabel: string;
   nav: (page: string) => void;
   notify: (msg: string) => void;
   onStartFakeCall: () => void;
@@ -54,20 +51,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   sosPressing,
   requestLocation,
   locationState,
+  cityLabel,
   nav,
   notify,
   onStartFakeCall,
 }) => {
+  // Dynamic greeting based on current hour — no "good night"
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour >= 0 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
+    if (hour >= 12 && hour < 18) return { text: 'Good afternoon', emoji: '☀️' };
+    return { text: 'Good evening', emoji: '🌆' };
+  }, []);
+
   return (
     <section className="screen home-screen">
       <header className="home-header">
         <div>
           <p>
-            Good evening <span>👋</span>
+            {greeting.text} <span>{greeting.emoji}</span>
           </p>
           <h1>{displayName}</h1>
           <span className="location">
-            <MapPin size={12} /> Bengaluru, KA
+            <MapPin size={12} />
+            {cityLabel || 'Locating…'}
           </span>
         </div>
         <div className="header-actions">
@@ -75,27 +82,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <Bell size={20} />
             <i />
           </button>
-          <button onClick={() => nav('settings')} aria-label="Settings">
-            <Settings size={20} />
-          </button>
         </div>
       </header>
 
-      {/* Ad Banner Card */}
-      <div className="ad-card">
-        <div className="ad-icon">🛒</div>
-        <div>
-          <span>SPONSORED</span>
-          <b>SafeStep Shoes</b>
-          <p>Grip-tech footwear for city commutes</p>
-        </div>
-        <button onClick={() => notify('Opening sponsored offer...')}>View</button>
-      </div>
-      <div className="ad-dots" aria-hidden="true">
-        <b />
-        <i />
-        <i />
-      </div>
+      {/* Ad Carousel */}
+      <AdCarousel notify={notify} />
 
       {/* Journey Banner with Pause/Arrived controls */}
       <JourneyBanner

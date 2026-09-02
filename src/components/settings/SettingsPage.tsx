@@ -83,17 +83,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
 
   return (
     <section className="screen settings-screen">
-      <BackHeader title={t('settings.title')} nav={nav} />
+      <BackHeader title={t('settings.title', 'Settings')} nav={nav} />
 
       <div className="profile-card">
-        <span>{initials}</span>
+        <span style={{ flexShrink: 0 }}>{initials}</span>
         <div>
           <b>{displayName}</b>
           <small>{email}</small>
         </div>
         {onSignOut && (
-          <button onClick={onSignOut} style={{ fontSize: '11px', color: '#ef4444', fontWeight: 700 }}>
-            {t('settings.sign_out')}
+          <button onClick={onSignOut} style={{ fontSize: '11px', color: '#ef4444', fontWeight: 700, border: '1px solid #fee2e2', borderRadius: '6px', padding: '4px 8px', background: 'transparent' }}>
+            {t('settings.sign_out', 'Sign Out')}
           </button>
         )}
       </div>
@@ -106,66 +106,66 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </button>
       </div>
 
-      <p className="settings-label">{t('settings.preferences')}</p>
+      <p className="settings-label">{t('settings.preferences', 'PREFERENCES')}</p>
       <div className="settings-group">
         <button className="setting-row" onClick={() => setDark(!dark)}>
           <span><Moon size={18} /></span>
-          <b>{t('settings.dark_mode')}</b>
+          <b>{t('settings.dark_mode', 'Dark Mode')}</b>
           <i className={`switch ${dark ? 'on' : ''}`}><em /></i>
         </button>
 
         <button className="setting-row" onClick={() => setLangModalOpen(true)}>
           <span><MessageCircle size={18} /></span>
-          <b>{t('settings.language')}</b>
+          <b>{t('settings.language', 'Language')}</b>
           <small>{getLanguageLabel(i18n.language)}</small>
           <ChevronRight size={16} />
         </button>
 
         <button className="setting-row" onClick={() => setNotifications(!notifications)}>
           <span><Bell size={18} /></span>
-          <b>{t('settings.notifications')}</b>
+          <b>{t('settings.notifications', 'Notifications')}</b>
           <i className={`switch ${notifications ? 'on' : ''}`}><em /></i>
         </button>
       </div>
 
-      <p className="settings-label">{t('settings.safety')}</p>
+      <p className="settings-label">{t('settings.safety', 'SAFETY')}</p>
       <div className="settings-group">
         <button className="setting-row" onClick={() => nav('contacts')}>
           <span><UsersRound size={18} /></span>
-          <b>{t('settings.emergency_contacts')}</b>
+          <b>{t('settings.emergency_contacts', 'Emergency Contacts')}</b>
           <ChevronRight size={16} />
         </button>
 
         <button className="setting-row" onClick={() => nav('activity-history')}>
           <span><Clock3 size={18} /></span>
-          <b>{t('settings.activity_history')}</b>
+          <b>{t('settings.activity_history', 'Activity History')}</b>
           <ChevronRight size={16} />
         </button>
 
         <button className="setting-row" onClick={() => nav('privacy-data')}>
           <span><LockKeyhole size={18} /></span>
-          <b>{t('settings.privacy')}</b>
+          <b>{t('settings.privacy', 'Privacy & Data')}</b>
           <ChevronRight size={16} />
         </button>
 
         <button className="setting-row" onClick={() => setRecord(!record)}>
           <span><Camera size={18} /></span>
-          <b>{t('settings.auto_audio_video')}</b>
+          <b>{t('settings.auto_audio_video', 'Auto audio/video on SOS')}</b>
           <i className={`switch ${record ? 'on' : ''}`}><em /></i>
         </button>
       </div>
 
-      <p className="settings-label">{t('settings.community')}</p>
+      <p className="settings-label">{t('settings.community', 'COMMUNITY')}</p>
       <div className="settings-group">
         <button className="setting-row" onClick={() => nav('rakshak')}>
           <span><ShieldCheck size={18} /></span>
-          <b>{t('settings.rakshak_network')}</b>
+          <b>{t('settings.rakshak_network', 'Rakshak Network')}</b>
           <ChevronRight size={16} />
         </button>
 
         <button className="setting-row" onClick={() => nav('support')}>
           <span><HeartHandshake size={18} /></span>
-          <b>Our Supports &amp; Helplines</b>
+          <b>{t('settings.supports_helplines', 'Our Supports & Helplines')}</b>
           <ChevronRight size={16} />
         </button>
       </div>

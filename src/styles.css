@@ -6352,26 +6352,61 @@ input[type=number] {
   position: absolute;
   top: 52px;
   right: 0;
-  width: 132px;
-  overflow: hidden;
+  width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
   border: 1px solid #e9e3ff;
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 12px 30px rgba(30, 23, 75, .16);
+  scrollbar-width: thin;
+  scrollbar-color: #e9e3ff transparent;
+}
+
+.welcome-language-menu-header {
+  padding: 12px 14px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #7c3aed;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #f0ebff;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 2;
 }
 
 .welcome-language-menu button {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 14px;
   background: transparent;
   color: #202044;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   text-align: left;
+  border-bottom: 1px solid #f7f4ff;
+}
+
+.welcome-language-menu button:last-child {
+  border-bottom: none;
 }
 
 .welcome-language-menu button:hover { background: #f5f1ff; }
+
+.welcome-language-menu button.active {
+  color: #7c3aed;
+  background: #f5f1ff;
+}
+
+.lang-check {
+  color: #7c3aed;
+  font-weight: 800;
+  font-size: 14px;
+}
 
 .welcome-footer-links button {
   padding: 0;

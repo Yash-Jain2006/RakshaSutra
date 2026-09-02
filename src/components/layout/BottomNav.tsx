@@ -1,16 +1,18 @@
 import React from 'react';
-import { ArrowLeft, Compass, Map as MapIcon, SlidersHorizontal, UsersRound } from 'lucide-react';
+import { Compass, Map as MapIcon, Settings, SlidersHorizontal, UsersRound } from 'lucide-react';
 
 interface BottomNavProps {
   page: string;
   nav: (page: string) => void;
+  isAdmin?: boolean;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ page, nav }) => {
+export const BottomNav: React.FC<BottomNavProps> = ({ page, nav, isAdmin }) => {
   const items: [string, React.ElementType, string][] = [
     ['home', Compass, 'Home'],
     ['map', MapIcon, 'Map'],
-    ['community', UsersRound, 'Community'],
+    ['rakshak', UsersRound, 'Rakshaks'],
+    ['settings', Settings, 'Settings'],
   ];
 
   return (
@@ -26,17 +28,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({ page, nav }) => {
           <span>{label}</span>
         </button>
       ))}
-      <button
-        className={page === 'admin' ? 'selected' : ''}
-        onClick={() => nav('admin')}
-        aria-current={page === 'admin' ? 'page' : undefined}
-      >
-        <SlidersHorizontal size={20} />
-        <span>Admin</span>
-      </button>
+      {isAdmin && (
+        <button
+          className={page === 'admin' ? 'selected' : ''}
+          onClick={() => nav('admin')}
+          aria-current={page === 'admin' ? 'page' : undefined}
+        >
+          <SlidersHorizontal size={20} />
+          <span>Admin</span>
+        </button>
+      )}
     </nav>
   );
 };
+
 
 interface BackHeaderProps {
   title: string;

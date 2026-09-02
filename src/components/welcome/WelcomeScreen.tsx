@@ -1,4 +1,26 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+const LANGUAGES = [
+  { code: 'en',  label: 'English' },
+  { code: 'hi',  label: 'हिन्दी — Hindi' },
+  { code: 'bn',  label: 'বাংলা — Bengali' },
+  { code: 'ta',  label: 'தமிழ் — Tamil' },
+  { code: 'te',  label: 'తెలుగు — Telugu' },
+  { code: 'mr',  label: 'मराठी — Marathi' },
+  { code: 'gu',  label: 'ગુજરાતી — Gujarati' },
+  { code: 'kn',  label: 'ಕನ್ನಡ — Kannada' },
+  { code: 'ml',  label: 'മലയാളം — Malayalam' },
+  { code: 'pa',  label: 'ਪੰਜਾਬੀ — Punjabi' },
+  { code: 'or',  label: 'ଓଡ଼ିଆ — Odia' },
+  { code: 'ur',  label: 'اردو — Urdu' },
+  { code: 'ne',  label: 'नेपाली — Nepali' },
+  { code: 'sa',  label: 'संस्कृतम् — Sanskrit' },
+  { code: 'zh',  label: '中文 — Chinese' },
+  { code: 'fr',  label: 'Français — French' },
+  { code: 'de',  label: 'Deutsch — German' },
+  { code: 'ja',  label: '日本語 — Japanese' },
+];
 
 interface WelcomeScreenProps {
   onStart: () => void;
@@ -6,7 +28,15 @@ interface WelcomeScreenProps {
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak }) => {
+  const { i18n } = useTranslation();
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [selectedLang, setSelectedLang] = useState(i18n.language || 'en');
+
+  const handleSelectLang = (code: string) => {
+    setSelectedLang(code);
+    i18n.changeLanguage(code);
+    setLanguageOpen(false);
+  };
 
   return (
     <div className="welcome-artwork-root">
@@ -29,8 +59,19 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak
           </button>
           {languageOpen && (
             <div className="welcome-language-menu" role="menu" aria-label="Choose language">
-              <button type="button" role="menuitem" onClick={() => setLanguageOpen(false)}>English</button>
-              <button type="button" role="menuitem" onClick={() => setLanguageOpen(false)}>हिन्दी</button>
+              <div className="welcome-language-menu-header">Select Language</div>
+              {LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  type="button"
+                  role="menuitem"
+                  className={selectedLang === lang.code ? 'active' : ''}
+                  onClick={() => handleSelectLang(lang.code)}
+                >
+                  {lang.label}
+                  {selectedLang === lang.code && <span className="lang-check">✓</span>}
+                </button>
+              ))}
             </div>
           )}
         </div>

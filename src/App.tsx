@@ -27,9 +27,11 @@ import { Brand } from './components/layout/Brand';
 import { MapPage } from './components/map/MapPage';
 import { RakshakPage } from './components/rakshak/RakshakPage';
 import { RakshakApplication } from './components/rakshak/RakshakApplication';
+import { EditProfilePage } from './components/settings/EditProfilePage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { SOSOverlay } from './components/sos/SOSOverlay';
 import { SupportPage } from './components/support/SupportPage';
+import { PrivacyData } from './components/settings/PrivacyData';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 
 
@@ -67,6 +69,8 @@ export function App() {
   const wakeLockRef = useRef<any>(null);
   const watchIdRef = useRef<number | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [cityLabel, setCityLabel] = useState('');
+  const [profileDisplayName, setProfileDisplayName] = useState('');
 
   const isAdmin = user?.email === 'rakshaasutra@gmail.com';
 
@@ -472,8 +476,43 @@ export function App() {
 
   const nav = (next: string) => setPage(next);
 
+  // Reverse-geocode user location to get city name
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setCityLabel('India');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            { headers: { 'Accept-Language': 'en' } }
+          );
+          const json = await res.json();
+          const city =
+            json.address?.city ||
+            json.address?.town ||
+            json.address?.village ||
+            json.address?.state_district ||
+            json.address?.state ||
+            'Unknown';
+          const state = json.address?.state_code || json.address?.state || '';
+          setCityLabel(state ? `${city}, ${state}` : city);
+        } catch {
+          setCityLabel('India');
+        }
+      },
+      () => setCityLabel('India')
+    );
+  }, []);
+
   const displayName =
-    user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ananya Sharma';
+    profileDisplayName ||
+    user?.user_metadata?.display_name ||
+    user?.email?.split('@')[0] ||
+    'Ananya Sharma';
 
   // Render Onboarding / Auth flow if not started or signed out
   if (entryScreen === 'welcome') {
@@ -543,6 +582,7 @@ export function App() {
               sosPressing={sosPressing}
               requestLocation={requestLocation}
               locationState={locationState}
+              cityLabel={cityLabel}
               nav={nav}
               notify={notify}
               onStartFakeCall={() => setFakeCall(true)}
@@ -588,14 +628,45 @@ export function App() {
             />
           )}
 
+          {page === 'edit-profile' && (
+            <EditProfilePage
+              nav={nav}
+              displayName={displayName}
+              email={user?.email || ''}
+              onProfileUpdated={(newName) => setProfileDisplayName(newName)}
+              notify={notify}
+            />
+          )}
+
+          {page === 'activity-history' && (
+            <section className="screen settings-screen">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <button onClick={() => nav('settings')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>←</button>
+                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Activity History</h2>
+              </div>
+              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>
+                <p>No recent activity found.</p>
+                <p style={{ marginTop: '8px', fontSize: '11px' }}>SOS events and journey logs will appear here.</p>
+              </div>
+            </section>
+          )}
+
+          {page === 'privacy-data' && (
+            <PrivacyData nav={nav} />
+          )}
+
+          {page === 'support' && (
+            <SupportPage nav={nav} />
+          )}
+
 
 
           {page === 'admin' && isAdmin && (
             <AdminPanel nav={nav} reports={reports} notify={notify} />
           )}
 
-          {['home', 'map', 'rakshak', 'settings'].includes(page) && (
-            <BottomNav page={page} nav={nav} />
+          {['home', 'map', 'rakshak', 'settings', 'admin'].includes(page) && (
+            <BottomNav page={page} nav={nav} isAdmin={isAdmin} />
           )}
         </main>
       </div>
