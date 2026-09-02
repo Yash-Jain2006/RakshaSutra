@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.playwright-cli/
+output/
+.env
+.env.*
+!.env.example
+.agent/
+.vscode/
+scratch/
+__pycache__/
+*.pyc
+task.md

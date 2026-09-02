@@ -1,0 +1,12 @@
+export type AppRole = 'user' | 'rakshak' | 'admin';
+export type AccountStatus = 'active' | 'suspended' | 'removed';
+export type RakshakStatus = 'pending' | 'verified' | 'rejected' | 'inactive';
+export type SosStatus = 'active' | 'cancelled' | 'safe' | 'expired';
+export type LocationSource = 'precise' | 'last_known' | 'fallback';
+export type DeliveryRecipientType = 'contact' | 'rakshak';
+export type DeliveryStatus = 'queued' | 'sent' | 'delivered' | 'acknowledged' | 'failed' | 'cancelled';
+export type ContactConfirmationStatus = 'pending' | 'confirmed' | 'expired';
+export type SafetyLevel = 'red' | 'orange' | 'green';
+export type ModerationStatus = 'pending' | 'approved' | 'rejected' | 'flagged';
+export type RakshakComplaintStatus = 'pending' | 'investigating' | 'substantiated' | 'dismissed';
+export type JourneyStatus = 'active' | 'paused' | 'arrived' | 'cancelled' | 'expired';

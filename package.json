@@ -1,0 +1,33 @@
+{
+  "name": "raksha-sutra",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.2",
+    "@vitejs/plugin-react": "latest",
+    "framer-motion": "^13.0.0",
+    "i18next": "^26.3.6",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^1.31.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-i18next": "^17.0.11",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.3",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.22",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "jimp": "^1.6.1",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

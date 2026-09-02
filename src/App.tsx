@@ -1,0 +1,631 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Check, Phone, ShieldCheck, UsersRound } from 'lucide-react';
+import { initialContacts, rakshaks, reportSeed } from './data.ts';
+import { isSupabaseConfigured } from './lib/supabase.ts';
+import { getCurrentSession, onAuthStateChange, signOut } from './services/authService.ts';
+import {
+  createEmergencyContact,
+  createSosEvent,
+  deleteEmergencyContact,
+  dispatchSos,
+  listEmergencyContacts,
+  markSosSafe,
+  submitRakshakComplaint,
+  updateSosLocation,
+} from './services/safetyService.ts';
+import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } from './types/models';
+
+import { AdminPanel } from './components/admin/AdminPanel';
+import { AuthScreen, LoadingScreen } from './components/auth/AuthScreen';
+import { CommunityPage } from './components/community/CommunityPage';
+import { ContactsScreen } from './components/contacts/ContactsScreen';
+import { FakeCall } from './components/fake-call/FakeCall';
+import { HomeScreen } from './components/home/HomeScreen';
+import { JourneySetupModal } from './components/journey/JourneySetupModal';
+import { BottomNav } from './components/layout/BottomNav';
+import { Brand } from './components/layout/Brand';
+import { MapPage } from './components/map/MapPage';
+import { RakshakPage } from './components/rakshak/RakshakPage';
+import { SettingsPage } from './components/settings/SettingsPage';
+import { SOSOverlay } from './components/sos/SOSOverlay';
+import { SupportPage } from './components/support/SupportPage';
+import { WelcomeScreen } from './components/welcome/WelcomeScreen';
+
+
+export function App() {
+  const [started, setStarted] = useState(false);
+  const [page, setPage] = useState('home');
+  const [contacts, setContacts] = useState<EmergencyContact[]>(initialContacts as EmergencyContact[]);
+  const [journey, setJourney] = useState(false);
+  const [journeyDestination, setJourneyDestination] = useState('Home (Indiranagar)');
+  const [showJourneySetup, setShowJourneySetup] = useState(false);
+  const [sos, setSos] = useState(false);
+  const [sosTime, setSosTime] = useState(0);
+  const [toast, setToast] = useState('');
+  const [fakeCall, setFakeCall] = useState(false);
+  const [locationState, setLocationState] = useState<'ready' | 'locating' | 'shared' | 'fallback'>('ready');
+  const [reports, setReports] = useState<IncidentReport[]>(reportSeed as IncidentReport[]);
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+  const [sosPressing, setSosPressing] = useState(false);
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out' | 'demo'>(
+    isSupabaseConfigured ? 'checking' : 'demo'
+  );
+  const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { display_name?: string } } | null>(null);
+  const [activeSosEventId, setActiveSosEventId] = useState<string | null>(null);
+  const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
+  const [notifications, setNotifications] = useState(() => localStorage.getItem('notifications') !== 'false');
+  const [record, setRecord] = useState(() => localStorage.getItem('record') !== 'false');
+  const sosHoldRef = useRef<number | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<BlobPart[]>([]);
+  const wakeLockRef = useRef<any>(null);
+  const watchIdRef = useRef<number | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const isAdmin = user?.email === 'rakshaasutra@gmail.com';
+
+  // Dark Mode Sync
+  useEffect(() => {
+    if (dark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [dark]);
+
+  // Notifications Sync
+  useEffect(() => {
+    localStorage.setItem('notifications', notifications ? 'true' : 'false');
+    if (notifications && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, [notifications]);
+
+  // Auto Record Sync
+  useEffect(() => {
+    localStorage.setItem('record', record ? 'true' : 'false');
+  }, [record]);
+
+  // SOS Timer
+  useEffect(() => {
+    if (!sos) return;
+    const interval = window.setInterval(() => setSosTime((t) => t + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, [sos]);
+  // Screen Wake Lock Resiliency on Visibility Change
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && sos) {
+        if ('wakeLock' in navigator) {
+          try {
+            if (wakeLockRef.current) {
+              wakeLockRef.current.release().catch(() => {});
+            }
+            wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+            console.log("Wake Lock re-acquired");
+          } catch (err) {
+            console.error('Wake lock re-acquire failed:', err);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [sos]);
+
+  // Phase 3: Continuous Background Location Polling during SOS
+  useEffect(() => {
+    if (!sos || !navigator.geolocation || !activeSosEventId) return;
+    
+    // Start real-time tracking when SOS is active
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = position.coords.accuracy;
+        
+        // Aggressively cache valid locations as fallback
+        localStorage.setItem('lastLocationLat', lat.toString());
+        localStorage.setItem('lastLocationLng', lng.toString());
+
+        // Sync with backend
+        updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => {});
+      },
+      (error) => console.error("SOS Location tracking error", error),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+
+    // Stop tracking immediately when SOS is cancelled
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        console.log("SOS cancelled - background location tracking stopped.");
+      }
+    };
+  }, [sos, activeSosEventId]);
+
+  // Toast Auto-hide
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(''), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  // Admin Route Protection
+  useEffect(() => {
+    if (page === 'admin' && !isAdmin && authStatus !== 'checking') {
+      setPage('home');
+    }
+  }, [page, isAdmin, authStatus]);
+
+  // Auth State Listener
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let mounted = true;
+
+    getCurrentSession()
+      .then((session) => {
+        if (!mounted) return;
+        setUser(session?.user ? { id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata } : null);
+        setAuthStatus(session ? 'signed-in' : 'signed-out');
+        if (session?.user?.email === 'rakshaasutra@gmail.com') {
+          setPage('admin');
+        }
+      })
+      .catch(() => mounted && setAuthStatus('signed-out'));
+
+    const { data: { subscription } } = onAuthStateChange((session, event) => {
+      if (!mounted) return;
+      setUser(session?.user ? { id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata } : null);
+      setAuthStatus(session ? 'signed-in' : 'signed-out');
+      if (event === 'SIGNED_IN' && session?.user?.email === 'rakshaasutra@gmail.com') {
+        setPage('admin');
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Fetch Emergency Contacts when signed in
+  useEffect(() => {
+    if (!user || !isSupabaseConfigured) return;
+    let mounted = true;
+
+    listEmergencyContacts()
+      .then((remoteContacts) => mounted && setContacts(remoteContacts as EmergencyContact[]))
+      .catch(() => mounted && notify('Could not load saved contacts. Showing local data.'));
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  const notify = (message: string) => setToast(message);
+
+  const requestLocation = (): Promise<LocationPayload> =>
+    new Promise((resolve) => {
+      setLocationState('locating');
+      if (!navigator.geolocation) {
+        window.setTimeout(() => {
+          setLocationState('fallback');
+          notify('Using Bengaluru fallback location');
+          resolve({
+            latitude: 12.9716,
+            longitude: 77.5946,
+            accuracyMeters: null,
+            source: 'fallback',
+          });
+        }, 800);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocationState('shared');
+          notify('Live location shared with your contacts');
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy,
+            source: 'precise',
+          });
+        },
+        () => {
+          setLocationState('fallback');
+          notify('Location unavailable — using Bengaluru fallback');
+          resolve({
+            latitude: 12.9716,
+            longitude: 77.5946,
+            accuracyMeters: null,
+            source: 'fallback',
+          });
+        },
+        { enableHighAccuracy: true, timeout: 7000 }
+      );
+    });
+
+  const sendSOS = async () => {
+    setSosTime(0);
+    setSos(true);
+
+    // Phase 3: Request Screen Wake Lock to prevent sleeping
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        console.log("Wake Lock acquired on SOS start");
+      } catch (err) {
+        console.error('Wake Lock error:', err);
+      }
+    }
+
+    // Browser notification
+    if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification('🚨 SOS Activated', { body: 'Your emergency contacts are being notified.', icon: '/favicon.ico' });
+    }
+
+    // Auto audio/video recording
+    if (record && navigator.mediaDevices) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
+        const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '' });
+        recordedChunksRef.current = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+        };
+        recorder.start(1000);
+        mediaRecorderRef.current = recorder;
+        setIsRecording(true);
+        notify('📹 Evidence recording started');
+      } catch (err) {
+        console.warn('Could not start media recording:', err);
+        notify('Camera/mic access denied — SOS continues without recording');
+      }
+    }
+
+    const location = await requestLocation();
+
+    if (!user || !isSupabaseConfigured) {
+      notify('SOS Active in Demo Mode. Alerts queued locally.');
+      return;
+    }
+
+    try {
+      const event = await createSosEvent({
+        userId: user.id,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        accuracyMeters: location.accuracyMeters,
+        locationSource: location.source,
+      });
+      setActiveSosEventId(event.id);
+      const dispatchResult = await dispatchSos(event.id);
+      if (dispatchResult?.deliveries) {
+        setDeliveries(dispatchResult.deliveries as SosDelivery[]);
+      }
+    } catch {
+      notify('SOS is active, but delivery is pending. Keep this screen open.');
+    }
+  };
+
+  const startSOSHold = () => {
+    if (sos || sosHoldRef.current) return;
+    setSosPressing(true);
+    sosHoldRef.current = window.setTimeout(() => {
+      sosHoldRef.current = null;
+      setSosPressing(false);
+      sendSOS();
+    }, 3000);
+  };
+
+  const cancelSOSHold = () => {
+    if (!sosHoldRef.current) return;
+    window.clearTimeout(sosHoldRef.current);
+    sosHoldRef.current = null;
+    setSosPressing(false);
+  };
+
+  const cancelSOS = () => {
+    setSos(false);
+
+    // Release Wake Lock
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(console.error);
+      wakeLockRef.current = null;
+      console.log("Wake Lock released on SOS cancel");
+    }
+
+    // Stop and save evidence recording
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        document.body.appendChild(a);
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `sos-evidence-${new Date().toISOString().replace(/:/g, '-')}.webm`;
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+        recordedChunksRef.current = [];
+        notify('📹 SOS evidence video saved to your device');
+      };
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+    }
+
+    // Browser notification for cancellation
+    if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification('✅ SOS Cancelled', { body: 'You marked yourself safe. Your contacts have been notified.' });
+    }
+
+    if (activeSosEventId && isSupabaseConfigured) {
+      markSosSafe(activeSosEventId, 'cancelled').catch(() =>
+        notify('SOS cancelled locally; delivery update is pending.')
+      );
+    }
+    setActiveSosEventId(null);
+    notify("SOS cancelled. Your contacts have been notified that you are safe.");
+  };
+
+  const addContact = async (contact: Partial<EmergencyContact>) => {
+    const isDuplicate = contacts.some(
+      (c) =>
+        (contact.phone && c.phone === contact.phone) ||
+        (contact.email && c.email === contact.email)
+    );
+
+    if (isDuplicate) {
+      notify('This contact is already in your emergency contacts.');
+      return;
+    }
+    const newContact: EmergencyContact = {
+      id: Date.now(),
+      name: contact.name || '',
+      relation: contact.relation || '',
+      phone: contact.phone || '',
+      email: contact.email || '',
+      confirmationStatus: 'pending',
+      initials: (contact.name || '')
+        .split(' ')
+        .map((v) => v[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase(),
+      color: '#6255ec',
+    };
+
+    if (!user || !isSupabaseConfigured) {
+      setContacts([...contacts, newContact]);
+      notify('Contact added locally (Demo Mode).');
+      return;
+    }
+
+    try {
+      const saved = await createEmergencyContact({
+        userId: user.id,
+        name: contact.name || '',
+        relationship: contact.relation || '',
+        phone: contact.phone || undefined,
+        email: contact.email || undefined,
+      });
+      setContacts([...contacts, saved as EmergencyContact]);
+      notify('Confirmation link sent to contact.');
+    } catch (err: any) {
+      console.error('Error saving contact:', err);
+      const msg = err?.message || (typeof err === 'string' ? err : 'Could not save the contact.');
+      notify(msg);
+    }
+  };
+
+  const removeContact = async (contactId: string | number) => {
+    const previousContacts = contacts;
+    setContacts(contacts.filter((c) => c.id !== contactId));
+
+    if (!user || !isSupabaseConfigured) return;
+
+    try {
+      await deleteEmergencyContact(contactId as string);
+    } catch {
+      setContacts(previousContacts);
+      notify('Could not remove the contact. Please try again.');
+    }
+  };
+
+  const reportRakshak = async (complaint: { rakshakId: string; description: string }) => {
+    if (!user || !isSupabaseConfigured) {
+      notify('Your concern is recorded in demo mode. Sent to safety team.');
+      return;
+    }
+    try {
+      await submitRakshakComplaint(complaint);
+      notify('Your concern has been sent to the safety team for investigation.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'We could not submit your concern.';
+      notify(msg);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      if (authStatus === 'signed-in') await signOut();
+    } catch (e) {
+      console.warn('Error signing out', e);
+    }
+    setUser(null);
+    setAuthStatus('signed-out');
+    notify('Signed out successfully');
+  };
+
+  const nav = (next: string) => setPage(next);
+
+  const displayName =
+    user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ananya Sharma';
+
+  // Render Onboarding / Auth flow if not started or signed out
+  if (!started) {
+    return (
+      <WelcomeScreen
+        onStart={() => setStarted(true)}
+        onRakshak={() => {
+          setStarted(true);
+          setPage('rakshak');
+        }}
+      />
+    );
+  }
+
+  if (authStatus === 'checking') return <LoadingScreen />;
+  if (authStatus === 'signed-out') return <AuthScreen onBack={() => setStarted(false)} />;
+
+  return (
+    <div className={dark ? 'app dark' : 'app'}>
+      <div className="desktop-shell">
+        <aside className="desktop-rail" aria-label="Desktop context rail">
+          <Brand />
+          <p>Personal safety, within reach.</p>
+          <div className="rail-card">
+            <ShieldCheck size={22} />
+            <span>Encrypted alert network</span>
+          </div>
+          <div className="rail-card">
+            <UsersRound size={22} />
+            <span>{rakshaks.length} verified Rakshaks nearby</span>
+          </div>
+          <small>Raksha Sutra · Pilot Interface</small>
+        </aside>
+
+        <main className="phone" role="main">
+          <div className="statusbar" aria-hidden="true">
+            <span>9:41</span>
+            <span className="status-icons">
+              <span>▮▮▮</span>
+              <span>◒</span>
+            </span>
+          </div>
+
+          {page === 'home' && (
+            <HomeScreen
+              displayName={displayName}
+              contacts={contacts}
+              journey={journey}
+              journeyDestination={journeyDestination}
+              onOpenJourneySetup={() => setShowJourneySetup(true)}
+              onPauseJourney={() => notify('Journey paused — viewers notified.')}
+              onResumeJourney={() => notify('Journey resumed — live tracking active.')}
+              onEndJourney={() => {
+                setJourney(false);
+                notify("Arrived safely! Journey ended and viewers notified.");
+              }}
+              sendSOS={sendSOS}
+              startSOSHold={startSOSHold}
+              cancelSOSHold={cancelSOSHold}
+              sosPressing={sosPressing}
+              requestLocation={requestLocation}
+              locationState={locationState}
+              nav={nav}
+              notify={notify}
+              onStartFakeCall={() => setFakeCall(true)}
+            />
+          )}
+
+          {page === 'map' && <MapPage nav={nav} />}
+
+          {page === 'community' && (
+            <CommunityPage nav={nav} reports={reports} setReports={setReports} />
+          )}
+
+          {page === 'rakshak' && (
+            <RakshakPage
+              userId={user?.id}
+              nav={nav}
+              notify={notify}
+              onComplaint={reportRakshak}
+            />
+          )}
+
+          {page === 'contacts' && (
+            <ContactsScreen
+              nav={nav}
+              contacts={contacts}
+              addContact={addContact}
+              removeContact={removeContact}
+            />
+          )}
+
+          {page === 'settings' && (
+            <SettingsPage
+              nav={nav}
+              dark={dark}
+              setDark={setDark}
+              notifications={notifications}
+              setNotifications={setNotifications}
+              record={record}
+              setRecord={setRecord}
+              displayName={displayName}
+              email={user?.email || 'ananya.s@email.com'}
+              onSignOut={isSupabaseConfigured ? handleSignOut : undefined}
+            />
+          )}
+
+
+
+          {page === 'admin' && isAdmin && (
+            <AdminPanel nav={nav} reports={reports} notify={notify} />
+          )}
+
+          {['home', 'map', 'rakshak', 'settings'].includes(page) && (
+            <BottomNav page={page} nav={nav} />
+          )}
+        </main>
+      </div>
+
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          <Check size={16} />
+          {toast}
+        </div>
+      )}
+
+      {sos && (
+        <SOSOverlay
+          contacts={contacts}
+          elapsed={sosTime}
+          cancel={cancelSOS}
+          deliveries={deliveries}
+          isDemo={!isSupabaseConfigured}
+          isOffline={!navigator.onLine}
+        />
+      )}
+
+      {fakeCall && <FakeCall close={() => setFakeCall(false)} />}
+
+      {showJourneySetup && (
+        <JourneySetupModal
+          contacts={contacts}
+          close={() => setShowJourneySetup(false)}
+          startJourney={(dest) => {
+            setJourneyDestination(dest);
+            setJourney(true);
+            setShowJourneySetup(false);
+            notify(`Live journey to ${dest} started.`);
+          }}
+        />
+      )}
+
+    </div>
+  );
+}
+
+export default App;
