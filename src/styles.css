@@ -6329,3 +6329,460 @@ input[type=number] {
   }
 }
 
+/* ── Supplied welcome / entry screen references ──────────────────────────── */
+.welcome-language-control {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 30;
+}
+
+.welcome-lang-btn {
+  position: static;
+}
+
+.welcome-lang-btn img {
+  display: block;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.welcome-language-menu {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  width: 132px;
+  overflow: hidden;
+  border: 1px solid #e9e3ff;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(30, 23, 75, .16);
+}
+
+.welcome-language-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  color: #202044;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.welcome-language-menu button:hover { background: #f5f1ff; }
+
+.welcome-footer-links button {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+/* Reference form shell shared by sign-in, account creation, and Rakshak. */
+.reference-flow-root {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  color: #17233c;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.reference-phone {
+  position: relative;
+  width: min(100vw, 337px);
+  height: min(100dvh, 730px);
+  min-height: min(100dvh, 630px);
+  overflow: hidden;
+  border-radius: 31px;
+  background: #fff;
+  box-shadow: none;
+}
+
+.ref-back-button {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  background: #f3eeff;
+  color: #7645ee;
+}
+
+.ref-back-button:hover { background: #eae2ff; }
+
+.ref-auth-screen--login .ref-back-button { top: 34px; left: 18px; }
+.ref-auth-screen--signup .ref-back-button { top: 28px; left: 18px; }
+
+.ref-auth-content {
+  position: absolute;
+  right: 26px;
+  left: 26px;
+}
+
+.ref-auth-screen--login .ref-auth-content { top: 160px; }
+.ref-auth-screen--signup .ref-auth-content { top: 86px; }
+
+.ref-auth-content h1,
+.ref-rakshak-content h1 {
+  margin: 0;
+  color: #17233c;
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -.85px;
+  line-height: 1.18;
+}
+
+.ref-auth-lead,
+.ref-rakshak-lead {
+  margin: 4px 0 0;
+  color: #6c7f9e;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.55;
+}
+
+.ref-auth-screen--login .ref-auth-lead { max-width: 254px; }
+
+.ref-auth-form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 11px;
+}
+
+.ref-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0 0 10px;
+  color: #58708f;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.ref-input-shell {
+  display: flex;
+  width: 100%;
+  height: 45px;
+  align-items: center;
+  gap: 12px;
+  padding: 0 15px;
+  overflow: hidden;
+  border: 1px solid #e2e8f2;
+  border-radius: 13px;
+  background: #f8fafc;
+  color: #9aaec8;
+}
+
+.ref-input-shell input,
+.ref-rakshak-field input,
+.ref-rakshak-phone-row input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #33445f;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.ref-input-shell input::placeholder,
+.ref-rakshak-field input::placeholder { color: #687891; opacity: 1; }
+
+.ref-input-shell:focus-within,
+.ref-rakshak-field input:focus,
+.ref-rakshak-phone-row input:focus,
+.ref-phone-row select:focus,
+.ref-rakshak-phone-row select:focus {
+  outline: 2px solid rgba(116, 62, 237, .18);
+  outline-offset: -2px;
+  border-color: #8b63f1;
+}
+
+.ref-submit-button,
+.ref-rakshak-submit {
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #743eed;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -.2px;
+  box-shadow: 0 1px 2px rgba(79, 49, 187, .18);
+}
+
+.ref-submit-button:hover,
+.ref-rakshak-submit:hover { background: #6735e9; }
+.ref-submit-button:disabled,
+.ref-rakshak-submit:disabled { cursor: progress; opacity: .72; }
+
+.ref-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 27px 0 25px;
+  color: #9aacC5;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+.ref-auth-divider::before,
+.ref-auth-divider::after {
+  width: 100%;
+  height: 1px;
+  content: '';
+  background: #e5e3f0;
+}
+
+.ref-auth-divider span { flex: 0 0 auto; white-space: nowrap; }
+
+.ref-google-button {
+  display: flex;
+  width: 100%;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #e3dcf1;
+  border-radius: 8px;
+  background: #fff;
+  color: #26354e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ref-google-button:hover { background: #fdfcff; }
+.ref-google-mark { width: 19px; height: 19px; flex: 0 0 auto; }
+
+.ref-auth-switch {
+  margin: 21px -8px 0;
+  color: #17233c;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -.25px;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.ref-auth-switch button,
+.ref-auth-legal button,
+.ref-terms button,
+.ref-rakshak-terms button {
+  padding: 0;
+  background: transparent;
+  color: #7445ec;
+  font: inherit;
+  font-weight: 800;
+}
+
+.ref-auth-legal {
+  position: absolute;
+  right: 14px;
+  bottom: 33px;
+  left: 14px;
+  margin: 0;
+  color: #9aacC5;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.ref-auth-message {
+  margin: -2px 0 3px;
+  color: #b13f54;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.ref-inline-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.ref-inline-fields .ref-field { margin-bottom: 10px; }
+.ref-inline-fields .ref-input-shell { height: 44px; }
+
+.ref-phone-row,
+.ref-rakshak-phone-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.ref-phone-row select,
+.ref-rakshak-phone-row select {
+  width: 70px;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid #e3dcf1;
+  border-radius: 8px;
+  outline: 0;
+  background: #fff;
+  color: #26354e;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.ref-phone-row .ref-input-shell { height: 44px; }
+.ref-auth-screen--signup .ref-field { margin-bottom: 10px; }
+
+.ref-terms,
+.ref-rakshak-terms {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: -1px;
+  color: #687e9c;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ref-terms input,
+.ref-rakshak-terms input {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin: 0;
+  appearance: none;
+  border: 1.5px solid #9aa1aa;
+  border-radius: 2px;
+  background: #fff;
+}
+
+.ref-terms input:checked,
+.ref-rakshak-terms input:checked { border-color: #743eed; background: #743eed; box-shadow: inset 0 0 0 3px #fff; }
+
+.ref-auth-screen--signup .ref-submit-button { margin-top: 29px; }
+.ref-auth-screen--signup .ref-auth-divider { margin-top: 29px; margin-bottom: 25px; }
+.ref-auth-screen--signup .ref-auth-switch { margin-top: 20px; }
+
+/* Become a Rakshak reference form. */
+.ref-rakshak-screen .ref-back-button { top: 16px; left: 16px; width: 32px; height: 32px; }
+
+.ref-rakshak-content {
+  position: absolute;
+  top: 60px;
+  right: 16px;
+  left: 16px;
+}
+
+.ref-rakshak-content h1 { font-size: 21px; letter-spacing: -.75px; }
+.ref-rakshak-lead { margin-top: 4px; font-size: 11px; line-height: 1.4; }
+
+.ref-rakshak-form { margin-top: 17px; }
+
+.ref-document-choice {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.ref-document-choice legend,
+.ref-rakshak-field > span:first-child {
+  margin: 0 0 6px;
+  padding: 0;
+  color: #58708f;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.ref-document-choice > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+
+.ref-document-choice button {
+  height: 40px;
+  padding: 0 3px;
+  border: 1px solid #e3dcf1;
+  border-radius: 8px;
+  background: #fff;
+  color: #26354e;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ref-document-choice button.is-selected { border-color: #8758ed; color: #7445ec; }
+.ref-document-choice small { display: block; margin-top: 5px; color: #9aabc4; font-size: 10px; line-height: 1.2; }
+
+.ref-rakshak-field {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+}
+
+.ref-rakshak-field input,
+.ref-rakshak-phone-row input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #e3dcf1;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.ref-rakshak-phone-row select { height: 40px; }
+.ref-rakshak-phone-row input { min-width: 0; }
+
+.ref-upload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ref-upload-tile {
+  display: grid;
+  height: 59px;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px dashed #e3dcf1;
+  border-radius: 8px;
+  background: #fff;
+  color: #69809e;
+  font-size: 10px;
+  font-weight: 750;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ref-upload-tile.is-ready { border-color: #7b50eb; color: #7445ec; }
+.ref-upload-tile input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.ref-rakshak-terms { margin-top: 27px; }
+.ref-rakshak-submit { margin-top: 21px; }
+.ref-rakshak-footnote { margin: 12px 0 0; color: #788ea9; font-size: 10px; line-height: 1.2; text-align: center; }
+
+.reference-loading-phone { display: grid; place-content: center; gap: 14px; color: #61748f; text-align: center; }
+.reference-loading-phone p { margin: 0; font-size: 13px; font-weight: 700; }
+.reference-loading-spinner { width: 28px; height: 28px; margin: auto; border: 3px solid #eee9ff; border-top-color: #743eed; border-radius: 50%; animation: reference-spin .8s linear infinite; }
+@keyframes reference-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 337px) {
+  .reference-phone { border-radius: 0; }
+}
+
+@media (max-height: 650px) {
+  .reference-phone { overflow-y: auto; }
+  .ref-auth-screen--login .ref-auth-content { top: 118px; }
+  .ref-auth-legal { position: static; margin: 20px 18px; }
+}
+

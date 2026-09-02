@@ -26,6 +26,7 @@ import { BottomNav } from './components/layout/BottomNav';
 import { Brand } from './components/layout/Brand';
 import { MapPage } from './components/map/MapPage';
 import { RakshakPage } from './components/rakshak/RakshakPage';
+import { RakshakApplication } from './components/rakshak/RakshakApplication';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { SOSOverlay } from './components/sos/SOSOverlay';
 import { SupportPage } from './components/support/SupportPage';
@@ -34,6 +35,7 @@ import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 
 export function App() {
   const [started, setStarted] = useState(false);
+  const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
   const [page, setPage] = useState('home');
   const [contacts, setContacts] = useState<EmergencyContact[]>(initialContacts as EmergencyContact[]);
   const [journey, setJourney] = useState(false);
@@ -474,20 +476,27 @@ export function App() {
     user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Ananya Sharma';
 
   // Render Onboarding / Auth flow if not started or signed out
-  if (!started) {
+  if (entryScreen === 'welcome') {
     return (
       <WelcomeScreen
-        onStart={() => setStarted(true)}
-        onRakshak={() => {
-          setStarted(true);
-          setPage('rakshak');
-        }}
+        onStart={() => { setStarted(true); setEntryScreen('auth'); }}
+        onRakshak={() => setEntryScreen('rakshak')}
+      />
+    );
+  }
+
+  if (entryScreen === 'rakshak') {
+    return (
+      <RakshakApplication
+        close={() => setEntryScreen('welcome')}
+        finish={() => setEntryScreen('auth')}
+        userId={user?.id}
       />
     );
   }
 
   if (authStatus === 'checking') return <LoadingScreen />;
-  if (authStatus === 'signed-out') return <AuthScreen onBack={() => setStarted(false)} />;
+  if (authStatus === 'signed-out' || authStatus === 'demo') return <AuthScreen onBack={() => { setStarted(false); setEntryScreen('welcome'); }} />;
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
