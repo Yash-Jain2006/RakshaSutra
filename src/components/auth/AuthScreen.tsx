@@ -30,8 +30,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('Ananya Sharma');
-  const [age, setAge] = useState('22');
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [phoneCode, setPhoneCode] = useState('+91');
   const [phone, setPhone] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [message, setMessage] = useState('');
@@ -55,7 +56,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
           setMessage('Please accept the Terms & Privacy Policy to continue.');
           return;
         }
-        await signUpWithPassword({ email, password, displayName: name, age, phone });
+        const fullPhone = phone ? `${phoneCode}${phone}` : '';
+        await signUpWithPassword({ email, password, displayName: name, age, phone: fullPhone });
         setMessage('Account created. Check your email to confirm your account.');
       }
     } catch (error: unknown) {
@@ -130,7 +132,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
                 <label className="ref-field">
                   <span>Phone Number</span>
                   <span className="ref-phone-row">
-                    <select aria-label="Country calling code" defaultValue="+91"><option>+91</option></select>
+                    <select aria-label="Country calling code" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)}>
+                      <option value="+1">+1 (US/CA)</option>
+                      <option value="+44">+44 (UK)</option>
+                      <option value="+61">+61 (AU)</option>
+                      <option value="+91">+91 (IN)</option>
+                      <option value="+971">+971 (AE)</option>
+                    </select>
                     <span className="ref-input-shell">
                       <Phone size={17} aria-hidden="true" />
                       <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" aria-label="Phone number" />

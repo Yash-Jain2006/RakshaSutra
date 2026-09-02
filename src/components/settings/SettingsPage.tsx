@@ -28,6 +28,7 @@ interface SettingsPageProps {
   displayName?: string;
   email?: string;
   onSignOut?: () => void;
+  notify: (msg: string) => void;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -41,6 +42,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   displayName = 'Ananya Sharma',
   email = 'ananya.s@email.com',
   onSignOut,
+  notify,
 }) => {
   const { t, i18n } = useTranslation();
   const [langModalOpen, setLangModalOpen] = useState(false);
@@ -52,15 +54,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
     .join('')
     .toUpperCase();
 
-  const toggleRecord = async () => {
+  const toggleRecord = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (!record) {
+      // Check if media devices API is available (requires HTTPS or localhost)
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        notify("Camera/microphone access is not supported here. A secure HTTPS connection is required.");
+        return;
+      }
+
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         stream.getTracks().forEach(track => track.stop());
         setRecord(true);
         localStorage.setItem('auto_av_sos', 'true');
-      } catch (err) {
-        console.warn('Permission denied for auto-AV');
+      } catch (err: any) {
+        console.warn('Permission denied for auto-AV', err);
+        if (err.name === 'NotAllowedError') {
+          notify("Permission denied. Please allow camera and microphone access in your browser settings to enable this feature.");
+        } else {
+          notify("Unable to access camera/mic: " + err.message);
+        }
         setRecord(false);
         localStorage.setItem('auto_av_sos', 'false');
       }

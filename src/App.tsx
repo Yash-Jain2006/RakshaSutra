@@ -62,7 +62,7 @@ export function App() {
   const [activeSosEventId, setActiveSosEventId] = useState<string | null>(null);
   const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
   const [notifications, setNotifications] = useState(() => localStorage.getItem('notifications') !== 'false');
-  const [record, setRecord] = useState(() => localStorage.getItem('record') !== 'false');
+  const [record, setRecord] = useState(() => localStorage.getItem('record') === 'true');
   const sosHoldRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<BlobPart[]>([]);
@@ -404,12 +404,15 @@ export function App() {
     setContacts(contacts.filter((c) => c.id !== contactId));
 
     if (!user || !isSupabaseConfigured) return;
+    if (String(contactId).startsWith('seed-')) return;
 
     try {
       await deleteEmergencyContact(contactId as string);
-    } catch {
+    } catch (err: any) {
+      console.error('Error removing contact:', err);
       setContacts(previousContacts);
-      notify('Could not remove the contact. Please try again.');
+      const msg = err?.message || err?.details || err?.hint || 'Could not remove the contact. Please try again.';
+      notify(msg);
     }
   };
 
@@ -589,6 +592,7 @@ export function App() {
               displayName={displayName}
               email={user?.email || 'ananya.s@email.com'}
               onSignOut={isSupabaseConfigured ? handleSignOut : undefined}
+              notify={notify}
             />
           )}
 

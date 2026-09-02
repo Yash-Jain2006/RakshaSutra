@@ -12,6 +12,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ close, add }) => {
   const [name, setName] = useState('');
   const [relation, setRelation] = useState('');
   const [email, setEmail] = useState('');
+  const [phoneCode, setPhoneCode] = useState('+91');
   const [phone, setPhone] = useState('');
   const [formError, setFormError] = useState('');
 
@@ -21,11 +22,12 @@ export const ContactForm: React.FC<ContactFormProps> = ({ close, add }) => {
       setFormError('Add an email address or phone number so this contact can confirm.');
       return;
     }
+    const fullPhone = phone ? `${phoneCode}${phone}` : '';
     add({
       name,
       relation,
       email,
-      phone,
+      phone: fullPhone,
       confirmationStatus: 'pending',
     });
   };
@@ -69,12 +71,27 @@ export const ContactForm: React.FC<ContactFormProps> = ({ close, add }) => {
         </label>
         <label>
           Phone number <small>Use international format</small>
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            type="tel"
-            placeholder="e.g. +919876543210"
-          />
+          <span className="ref-phone-row" style={{ display: 'flex', gap: '8px' }}>
+            <select 
+              aria-label="Country calling code" 
+              value={phoneCode} 
+              onChange={(e) => setPhoneCode(e.target.value)}
+              style={{ width: '100px', padding: '12px', borderRadius: '12px', border: '2px solid var(--border)', background: 'var(--bg-light)' }}
+            >
+              <option value="+1">+1 (US/CA)</option>
+              <option value="+44">+44 (UK)</option>
+              <option value="+61">+61 (AU)</option>
+              <option value="+91">+91 (IN)</option>
+              <option value="+971">+971 (AE)</option>
+            </select>
+            <input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              type="tel"
+              placeholder="9876543210"
+              style={{ flex: 1 }}
+            />
+          </span>
         </label>
         {formError && <p className="form-error">{formError}</p>}
         <p className="contact-consent">
