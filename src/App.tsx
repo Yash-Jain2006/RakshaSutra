@@ -8,6 +8,7 @@ import {
   createSosEvent,
   deleteEmergencyContact,
   dispatchSos,
+  dispatchJourney,
   listEmergencyContacts,
   markSosSafe,
   submitRakshakComplaint,
@@ -41,7 +42,8 @@ export function App() {
   const [page, setPage] = useState('home');
   const [contacts, setContacts] = useState<EmergencyContact[]>(initialContacts as EmergencyContact[]);
   const [journey, setJourney] = useState(false);
-  const [journeyDestination, setJourneyDestination] = useState('Home (Indiranagar)');
+  const [journeyDestination, setJourneyDestination] = useState('');
+  const [activeJourneyContactIds, setActiveJourneyContactIds] = useState<(string | number)[]>([]);
   const [showJourneySetup, setShowJourneySetup] = useState(false);
   const [sos, setSos] = useState(false);
   const [sosTime, setSosTime] = useState(0);
@@ -458,15 +460,17 @@ export function App() {
             { headers: { 'Accept-Language': 'en' } }
           );
           const json = await res.json();
-          const city =
-            json.address?.city ||
-            json.address?.town ||
-            json.address?.village ||
-            json.address?.state_district ||
-            json.address?.state ||
-            'Unknown';
-          const state = json.address?.state_code || json.address?.state || '';
-          setCityLabel(state ? `${city}, ${state}` : city);
+          const address = json.address || {};
+          const area = address.suburb || address.neighbourhood || address.village || address.residential || address.hamlet;
+          const city = address.city || address.town || address.municipality || address.state_district;
+          const state = address.state || address.state_code;
+          
+          const parts = [];
+          if (area) parts.push(area);
+          if (city && city !== area) parts.push(city);
+          if (state && state !== city && state !== area) parts.push(state);
+
+          setCityLabel(parts.length > 0 ? parts.join(', ') : 'Unknown');
         } catch {
           setCityLabel('India');
         }
@@ -541,7 +545,15 @@ export function App() {
               onResumeJourney={() => notify('Journey resumed — live tracking active.')}
               onEndJourney={() => {
                 setJourney(false);
-                notify("Arrived safely! Journey ended and viewers notified.");
+                const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
+                if (isSupabaseConfigured && journeyDestination) {
+                  dispatchJourney(journeyDestination, activeJourneyContactIds, trackingLink, 'arrived').catch(err => {
+                    console.error("Failed to dispatch arrival notifications:", err);
+                  });
+                }
+                setJourneyDestination('');
+                setActiveJourneyContactIds([]);
+                notify('You have arrived safely. Tracking stopped.');
               }}
               sendSOS={sendSOS}
               startSOSHold={startSOSHold}
@@ -663,11 +675,25 @@ export function App() {
         <JourneySetupModal
           contacts={contacts}
           close={() => setShowJourneySetup(false)}
-          startJourney={(dest) => {
+          startJourney={(dest, selectedContactIds) => {
             setJourneyDestination(dest);
+            setActiveJourneyContactIds(selectedContactIds);
             setJourney(true);
             setShowJourneySetup(false);
-            notify(`Live journey to ${dest} started.`);
+
+            const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
+            
+            if (isSupabaseConfigured) {
+              dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
+                console.error("Failed to dispatch journey emails:", err);
+              });
+            }
+
+            const selectedContacts = contacts.filter((c) => selectedContactIds.includes(c.id));
+            const notifiedCount = selectedContacts.length;
+            const shortDest = dest.split(',')[0].trim();
+
+            notify(`Journey to ${shortDest} started. Link sent to ${notifiedCount} contact${notifiedCount === 1 ? '' : 's'}.`);
           }}
         />
       )}

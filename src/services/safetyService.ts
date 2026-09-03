@@ -119,6 +119,22 @@ export async function dispatchSos(eventId: string) {
   return data;
 }
 
+export async function dispatchJourney(
+  destination: string, 
+  contactIds: (string | number)[], 
+  trackingLink: string, 
+  status: 'started' | 'arrived' = 'started'
+) {
+  const { data, error } = await configuredClient().functions.invoke(
+    "dispatch-journey",
+    {
+      body: { destination, contactIds, trackingLink, status },
+    },
+  );
+  if (error) throw error;
+  return data;
+}
+
 export async function markSosSafe(eventId: string, status: 'safe' | 'cancelled' = "safe") {
   const now = new Date().toISOString();
   const patch =

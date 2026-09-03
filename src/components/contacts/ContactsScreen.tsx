@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Shield, Trash2, X } from 'lucide-react';
+import { Plus, Shield, Trash2, X, Eye, EyeOff } from 'lucide-react';
 import type { EmergencyContact } from '../../types/models';
 import { BackHeader } from '../layout/BackHeader';
 
@@ -119,6 +119,7 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({
   removeContact,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | number | null>(null);
 
   return (
     <section className="screen contacts-screen">
@@ -145,21 +146,36 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({
 
       <div className="contact-list">
         {contacts.map((contact) => (
-          <div className="contact-row full" key={contact.id}>
+          <div className="contact-row full" key={contact.id} style={{ flexWrap: 'wrap' }}>
             <span style={{ background: contact.color }}>{contact.initials}</span>
-            <div>
+            <div style={{ flex: 1 }}>
               <b>{contact.name}</b>
               <small>
                 {contact.relation}
                 {contact.confirmationStatus === 'pending' ? ' · Confirmation pending' : ''}
               </small>
             </div>
-            <button
-              onClick={() => removeContact(contact.id)}
-              aria-label={`Remove ${contact.name}`}
-            >
-              <Trash2 size={17} />
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
+              <button
+                onClick={() => setExpandedId(expandedId === contact.id ? null : contact.id)}
+                aria-label={`View details for ${contact.name}`}
+                style={{ background: 'transparent', color: 'var(--text-secondary)' }}
+              >
+                {expandedId === contact.id ? <Eye size={17} /> : <EyeOff size={17} />}
+              </button>
+              <button
+                onClick={() => removeContact(contact.id)}
+                aria-label={`Remove ${contact.name}`}
+              >
+                <Trash2 size={17} />
+              </button>
+            </div>
+            {expandedId === contact.id && (
+              <div style={{ width: '100%', paddingLeft: '44px', marginTop: '-4px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                {contact.phone && <div style={{ marginBottom: '4px' }}>📞 {contact.phone}</div>}
+                {contact.email && <div>✉️ {contact.email}</div>}
+              </div>
+            )}
           </div>
         ))}
       </div>

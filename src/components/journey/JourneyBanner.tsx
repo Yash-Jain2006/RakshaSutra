@@ -61,7 +61,7 @@ export const JourneyBanner: React.FC<JourneyBannerProps> = ({
       <div style={{ flex: 1, minWidth: 0 }}>
         <b>{isPaused ? 'Journey Paused' : 'Live Journey Active'}</b>
         <small style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {destination ? `To: ${destination}` : 'Tracking active'} · {viewers.length} contacts watching
+          {destination ? `To: ${destination.split(',')[0].trim()}` : 'Tracking active'} · {viewers.length} contacts watching
         </small>
       </div>
 
@@ -73,8 +73,8 @@ export const JourneyBanner: React.FC<JourneyBannerProps> = ({
           style={{
             padding: '6px 10px',
             borderRadius: '8px',
-            background: 'rgba(255,255,255,0.2)',
-            color: '#fff',
+            background: isPaused ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.06)',
+            color: isPaused ? '#fff' : '#0f172a',
             fontSize: '11px',
             display: 'flex',
             alignItems: 'center',
