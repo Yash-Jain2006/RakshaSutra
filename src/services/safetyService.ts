@@ -135,6 +135,17 @@ export async function dispatchJourney(
   return data;
 }
 
+export async function dispatchLocationShare(trackingLink: string) {
+  const { data, error } = await configuredClient().functions.invoke(
+    "share-location",
+    {
+      body: { trackingLink },
+    },
+  );
+  if (error) throw error;
+  return data;
+}
+
 export async function markSosSafe(eventId: string, status: 'safe' | 'cancelled' = "safe") {
   const now = new Date().toISOString();
   const patch =

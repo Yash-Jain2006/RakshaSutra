@@ -68,21 +68,22 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
   }
 }
 
-async function sendWhatsAppAlert(phoneE164: string, locationLink: string, userName: string) {
+async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
   const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER') // e.g., whatsapp:+14155238886
 
   if (!accountSid || !authToken || !fromPhone) {
-    console.warn('Twilio credentials not found. Skipping WhatsApp to', phoneE164)
-    return
+    console.warn('Twilio credentials not found. Skipping to', phoneE164)
+    return false
   }
 
-  const message = `🚨 *URGENT SOS ALERT* 🚨\n\n*${userName}* has triggered an SOS and needs immediate assistance.\n\nView their live location here: ${locationLink}`
+  const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
+  const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
 
   const formData = new URLSearchParams()
-  formData.append('To', `whatsapp:${phoneE164}`)
-  formData.append('From', fromPhone)
+  formData.append('To', toPhone)
+  formData.append('From', actualFromPhone)
   formData.append('Body', message)
 
   try {
@@ -95,14 +96,14 @@ async function sendWhatsAppAlert(phoneE164: string, locationLink: string, userNa
       body: formData.toString()
     })
     if (!res.ok) {
-      console.error('WhatsApp send failed with status:', res.status, await res.text())
+      console.error(`Twilio send failed (${useWhatsApp ? 'WhatsApp' : 'SMS'}) with status:`, res.status, await res.text())
       return false
     } else {
-      console.log('WhatsApp sent successfully to', phoneE164)
+      console.log(`Twilio sent successfully (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to`, phoneE164)
       return true
     }
   } catch (e) {
-    console.error('WhatsApp send network error:', e)
+    console.error(`Twilio send network error (${useWhatsApp ? 'WhatsApp' : 'SMS'}):`, e)
     return false
   }
 }
@@ -226,32 +227,50 @@ Deno.serve(async (request: Request) => {
       const promises: Promise<void>[] = []
 
       for (const contact of (contacts || [])) {
+        const message = `🚨 *URGENT SOS ALERT* 🚨\n\n*${userName}* has triggered an SOS and needs immediate assistance.\n\nView their live location here: ${locationLink}`
+        
+        let twilioPromise = Promise.resolve(false)
+        if (contact.phone_e164) {
+          const smsDelivery = insertedDeliveries.find(d => d.contact_id === contact.id && d.channel === 'sms')
+          if (smsDelivery) {
+            const p = (async () => {
+              let success = await sendTwilioMessage(contact.phone_e164, message, true)
+              if (!success) {
+                console.log(`WhatsApp failed for ${contact.phone_e164}, trying SMS...`);
+                success = await sendTwilioMessage(contact.phone_e164, message, false);
+              }
+              await admin.from('sos_event_deliveries').update({
+                status: success ? 'delivered' : 'failed',
+                delivered_at: success ? new Date().toISOString() : null,
+                failure_reason: success ? null : 'API Request Failed'
+              }).eq('id', smsDelivery.id)
+              return success
+            })();
+            twilioPromise = p
+            promises.push(p.then(() => {}))
+          }
+        }
+
         if (contact.email) {
           const emailDelivery = insertedDeliveries.find(d => d.contact_id === contact.id && d.channel === 'email')
           if (emailDelivery) {
             promises.push(
-              sendEmailAlert(contact.email, locationLink, userName).then(async (success) => {
+              (async () => {
+                let success = await sendEmailAlert(contact.email, locationLink, userName)
+                if (!success && contact.phone_e164) {
+                  // Only try SMS fallback if Twilio also failed
+                  const twilioSuccess = await twilioPromise
+                  if (!twilioSuccess) {
+                    console.log(`Email failed for ${contact.email}, trying SMS fallback...`);
+                    success = await sendTwilioMessage(contact.phone_e164, message, false);
+                  }
+                }
                 await admin.from('sos_event_deliveries').update({
                   status: success ? 'delivered' : 'failed',
                   delivered_at: success ? new Date().toISOString() : null,
                   failure_reason: success ? null : 'API Request Failed'
                 }).eq('id', emailDelivery.id)
-              }).catch(err => console.error('Email promise error:', err))
-            )
-          }
-        }
-
-        if (contact.phone_e164) {
-          const smsDelivery = insertedDeliveries.find(d => d.contact_id === contact.id && d.channel === 'sms')
-          if (smsDelivery) {
-            promises.push(
-              sendWhatsAppAlert(contact.phone_e164, locationLink, userName).then(async (success) => {
-                await admin.from('sos_event_deliveries').update({
-                  status: success ? 'delivered' : 'failed',
-                  delivered_at: success ? new Date().toISOString() : null,
-                  failure_reason: success ? null : 'API Request Failed'
-                }).eq('id', smsDelivery.id)
-              }).catch(err => console.error('WhatsApp promise error:', err))
+              })()
             )
           }
         }

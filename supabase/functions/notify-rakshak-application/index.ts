@@ -27,10 +27,11 @@ Deno.serve(async (request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const publishableKey = readPlatformKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+  const secretKey = readPlatformKey('SUPABASE_SECRET_KEYS', 'SUPABASE_SERVICE_ROLE_KEY')
   const resendApiKey = Deno.env.get('RESEND_API_KEY') ?? ''
   const adminEmail = Deno.env.get('ADMIN_EMAIL') ?? 'rakshaasutra@gmail.com'
 
-  if (!supabaseUrl || !publishableKey) return json({ error: 'Server is not configured' }, 500)
+  if (!supabaseUrl || !publishableKey || !secretKey) return json({ error: 'Server is not configured' }, 500)
   if (!resendApiKey) return json({ error: 'Email service not configured' }, 500)
 
   // Verify caller is authenticated
@@ -116,10 +117,64 @@ Deno.serve(async (request) => {
     }),
   })
 
+  let emailSuccess = true;
   if (!emailRes.ok) {
     const errBody = await emailRes.text()
     console.error('[notify-rakshak-application] Resend error:', errBody)
-    return json({ error: 'Failed to send email notification' }, 500)
+    emailSuccess = false;
+  }
+
+  // Fallback to SMS if email fails and Admin has a phone number
+  if (!emailSuccess) {
+    const adminClient = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
+    const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin').limit(1)
+    
+    let adminPhone: string | null = null;
+    if (admins && admins.length > 0) {
+      const { data: adminUser } = await adminClient.auth.admin.getUserById(admins[0].id)
+      if (adminUser?.user?.phone) {
+        adminPhone = adminUser.user.phone
+      }
+    }
+
+    if (adminPhone) {
+      console.log('Email failed, attempting SMS fallback to admin phone:', adminPhone)
+      const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+      const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+      const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
+
+      if (accountSid && authToken && fromPhone) {
+        const message = `🛡️ New Rakshak Application received from ${applicantName}. Review in Admin Panel.`
+        const actualFromPhone = fromPhone.replace('whatsapp:', '')
+        
+        const formData = new URLSearchParams()
+        formData.append('To', adminPhone)
+        formData.append('From', actualFromPhone)
+        formData.append('Body', message)
+
+        try {
+          const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`
+            },
+            body: formData.toString()
+          })
+          if (!res.ok) {
+            console.error('Twilio SMS fallback failed:', await res.text())
+            return json({ error: 'Failed to send both email and SMS notification' }, 500)
+          }
+        } catch (e) {
+          console.error('Twilio network error:', e)
+          return json({ error: 'Failed to send both email and SMS notification' }, 500)
+        }
+      } else {
+        return json({ error: 'Failed to send email notification (No SMS fallback configured)' }, 500)
+      }
+    } else {
+      return json({ error: 'Failed to send email notification (Admin has no phone number)' }, 500)
+    }
   }
 
   return json({ sent: true })

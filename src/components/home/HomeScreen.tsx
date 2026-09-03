@@ -31,6 +31,7 @@ interface HomeScreenProps {
   cancelSOSHold: () => void;
   sosPressing: boolean;
   requestLocation: () => void;
+  shareLocation: () => void;
   locationState: string;
   cityLabel: string;
   nav: (page: string) => void;
@@ -52,6 +53,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   cancelSOSHold,
   sosPressing,
   requestLocation,
+  shareLocation,
   locationState,
   cityLabel,
   nav,
@@ -198,12 +200,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Send My Location Button */}
-      <button className="location-button" onClick={requestLocation}>
+      <button className="location-button" onClick={shareLocation}>
         <Navigation size={18} />
         {locationState === 'locating'
           ? 'Locating you…'
           : locationState === 'shared'
-            ? 'Location Shared'
+            ? 'Location Broadcasted'
             : 'Send My Location'}
       </button>
 

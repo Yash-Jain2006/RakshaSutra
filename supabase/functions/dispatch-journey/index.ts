@@ -65,26 +65,22 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
   }
 }
 
-async function sendWhatsAppAlert(phoneE164: string, locationLink: string, userName: string, destination: string, status: 'started' | 'arrived') {
+async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
   const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
 
   if (!accountSid || !authToken || !fromPhone) {
-    console.warn('Twilio credentials not found. Skipping WhatsApp to', phoneE164)
-    return
+    console.warn('Twilio credentials not found. Skipping to', phoneE164)
+    return false
   }
 
-  let message = '';
-  if (status === 'started') {
-    message = `📍 *LIVE JOURNEY TRACKING*\n\n*${userName}* has started a journey to *${destination}*.\n\nTrack their live location here: ${locationLink}`;
-  } else {
-    message = `✅ *SAFE ARRIVAL*\n\nGreat news! *${userName}* has safely arrived at *${destination}*. Tracking has been stopped.`;
-  }
+  const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
+  const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
 
   const formData = new URLSearchParams()
-  formData.append('To', `whatsapp:${phoneE164}`)
-  formData.append('From', fromPhone)
+  formData.append('To', toPhone)
+  formData.append('From', actualFromPhone)
   formData.append('Body', message)
 
   try {
@@ -97,14 +93,14 @@ async function sendWhatsAppAlert(phoneE164: string, locationLink: string, userNa
       body: formData.toString()
     })
     if (!res.ok) {
-      console.error('WhatsApp send failed with status:', res.status, await res.text())
+      console.error(`Twilio send failed (${useWhatsApp ? 'WhatsApp' : 'SMS'}) with status:`, res.status, await res.text())
       return false
     } else {
-      console.log('WhatsApp sent successfully to', phoneE164)
+      console.log(`Twilio sent successfully (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to`, phoneE164)
       return true
     }
   } catch (e) {
-    console.error('WhatsApp send network error:', e)
+    console.error(`Twilio send network error (${useWhatsApp ? 'WhatsApp' : 'SMS'}):`, e)
     return false
   }
 }
@@ -164,14 +160,40 @@ Deno.serve(async (request: Request) => {
       const promises: Promise<any>[] = []
       
       for (const contact of contacts) {
-        // Send email only when journey starts
-        if (contact.email && status === 'started') {
-          promises.push(sendEmailAlert(contact.email, trackingLink, userName, destination))
+        let twilioPromise = Promise.resolve(false)
+        let message = '';
+        if (status === 'started') {
+          message = `📍 *LIVE JOURNEY TRACKING*\n\n*${userName}* has started a journey to *${destination}*.\n\nTrack their live location here: ${trackingLink}`;
+        } else {
+          message = `✅ *SAFE ARRIVAL*\n\nGreat news! *${userName}* has safely arrived at *${destination}*. Tracking has been stopped.`;
         }
         
-        // Send WhatsApp for both start and arrival
+        // Send WhatsApp/SMS for both start and arrival
         if (contact.phone_e164) {
-          promises.push(sendWhatsAppAlert(contact.phone_e164, trackingLink, userName, destination, status as 'started' | 'arrived'))
+          const p = (async () => {
+            let success = await sendTwilioMessage(contact.phone_e164, message, true)
+            if (!success) {
+              console.log(`WhatsApp failed for ${contact.phone_e164}, trying SMS...`)
+              success = await sendTwilioMessage(contact.phone_e164, message, false)
+            }
+            return success
+          })()
+          twilioPromise = p
+          promises.push(p.then(() => {}))
+        }
+
+        // Send email only when journey starts
+        if (contact.email && status === 'started') {
+          promises.push((async () => {
+            let success = await sendEmailAlert(contact.email, trackingLink, userName, destination)
+            if (!success && contact.phone_e164) {
+              const twilioSuccess = await twilioPromise
+              if (!twilioSuccess) {
+                console.log(`Email failed for ${contact.email}, trying SMS fallback...`)
+                await sendTwilioMessage(contact.phone_e164, message, false)
+              }
+            }
+          })())
         }
       }
       

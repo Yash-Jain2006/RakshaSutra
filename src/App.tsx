@@ -9,6 +9,7 @@ import {
   deleteEmergencyContact,
   dispatchSos,
   dispatchJourney,
+  dispatchLocationShare,
   listEmergencyContacts,
   markSosSafe,
   submitRakshakComplaint,
@@ -261,6 +262,25 @@ export function App() {
         { enableHighAccuracy: true, timeout: 7000 }
       );
     });
+
+  const shareLocation = async () => {
+    await requestLocation();
+    
+    if (!user || !isSupabaseConfigured) {
+      notify('Location shared locally (Demo Mode).');
+      return;
+    }
+    
+    const trackingLink = `https://rakshasutra.in/track?session=${user.id}`;
+    
+    try {
+      await dispatchLocationShare(trackingLink);
+      notify('Live location sent via WhatsApp/SMS to all contacts!');
+    } catch (err) {
+      console.error('Failed to share location', err);
+      notify('Failed to broadcast location.');
+    }
+  };
 
   const sendSOS = async () => {
     setSosTime(0);
@@ -560,6 +580,7 @@ export function App() {
               cancelSOSHold={cancelSOSHold}
               sosPressing={sosPressing}
               requestLocation={requestLocation}
+              shareLocation={shareLocation}
               locationState={locationState}
               cityLabel={cityLabel}
               nav={nav}

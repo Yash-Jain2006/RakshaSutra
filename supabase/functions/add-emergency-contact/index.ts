@@ -22,72 +22,78 @@ async function sendConfirmationEmail({ to, contactName, ownerName, confirmationU
   const apiKey = Deno.env.get('RESEND_API_KEY')
   let from = Deno.env.get('CONFIRMATION_FROM_EMAIL')
   
-  // Auto-fix the incorrect domain setting in environment variables
   if (from && from.includes('rakshasutra.com')) {
     from = from.replace('rakshasutra.com', 'rakshasutra.in')
   } else if (!from) {
     from = 'safety@rakshasutra.in'
   }
 
-  if (!apiKey) throw new Error('Email confirmation is not configured')
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from,
-      to,
-      subject: 'Confirm your Raksha Sutra emergency-contact role',
-      html: `<p>Hello ${contactName},</p><p>${ownerName} has added you as an emergency contact on Raksha Sutra. In an emergency, you may receive a secure location link.</p><p><a href="${confirmationUrl}">Confirm emergency-contact role</a></p><p>If you do not recognise this request, do not confirm it.</p>`,
-    }),
-  })
-  
-  if (!response.ok) {
-    let errorMsg = 'The confirmation email could not be sent'
-    try {
-      const errorData = await response.json()
-      console.error('Resend API error:', errorData)
-      if (errorData.message) {
-        errorMsg = `Resend Error: ${errorData.message}`
-      }
-    } catch (e) {
-      console.error('Failed to parse Resend API error response')
+  if (!apiKey) {
+    console.warn('Email confirmation is not configured')
+    return false
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: 'Confirm your Raksha Sutra emergency-contact role',
+        html: `<p>Hello ${contactName},</p><p>${ownerName} has added you as an emergency contact on Raksha Sutra. In an emergency, you may receive a secure location link.</p><p><a href="${confirmationUrl}">Confirm emergency-contact role</a></p><p>If you do not recognise this request, do not confirm it.</p>`,
+      }),
+    })
+    
+    if (!response.ok) {
+      console.error('Resend API error:', await response.text())
+      return false
     }
-    throw new Error(errorMsg)
+    return true
+  } catch (e) {
+    console.error('Resend network error:', e)
+    return false
   }
 }
 
-async function sendConfirmationWhatsApp({ to, ownerName, confirmationUrl }: { to: string, ownerName: string, confirmationUrl: string }) {
+async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const from = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
-  
-  if (!accountSid || !authToken || !from) throw new Error('WhatsApp confirmation is not configured')
-  
-  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      To: `whatsapp:${to}`,
-      From: `whatsapp:${from}`,
-      Body: `${ownerName} added you as an emergency contact on Raksha Sutra. Confirm here: ${confirmationUrl}`,
-    }),
-  })
-  
-  if (!response.ok) {
-    let errorMsg = 'The confirmation WhatsApp message could not be sent'
-    try {
-      const errorData = await response.json()
-      console.error('Twilio WhatsApp error:', errorData)
-      if (errorData.message) {
-        errorMsg = `WhatsApp Error: ${errorData.message}`
-      }
-    } catch (e) {
-      console.error('Failed to parse Twilio error response')
+  const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
+
+  if (!accountSid || !authToken || !fromPhone) {
+    console.warn('Twilio credentials not found. Skipping to', phoneE164)
+    return false
+  }
+
+  const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
+  const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
+
+  const formData = new URLSearchParams()
+  formData.append('To', toPhone)
+  formData.append('From', actualFromPhone)
+  formData.append('Body', message)
+
+  try {
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`
+      },
+      body: formData.toString()
+    })
+    
+    if (!res.ok) {
+      console.error(`Twilio send failed (${useWhatsApp ? 'WhatsApp' : 'SMS'}) with status:`, res.status, await res.text())
+      return false
+    } else {
+      console.log(`Twilio sent successfully (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to`, phoneE164)
+      return true
     }
-    throw new Error(errorMsg)
+  } catch (e) {
+    console.error(`Twilio send network error (${useWhatsApp ? 'WhatsApp' : 'SMS'}):`, e)
+    return false
   }
 }
 
@@ -151,12 +157,33 @@ Deno.serve(async (request) => {
 
   try {
     const confirmationUrl = `${supabaseUrl}/functions/v1/confirm-emergency-contact?token=${token}`
-    if (email) {
-      await sendConfirmationEmail({ to: email, contactName: name, ownerName: profile.display_name || 'A Raksha Sutra user', confirmationUrl })
-    }
+    const ownerNameStr = profile.display_name || 'A Raksha Sutra user'
+    let anySuccess = false;
+    let twilioSuccess = false;
     
     if (phone) {
-      await sendConfirmationWhatsApp({ to: phone, ownerName: profile.display_name || 'A Raksha Sutra user', confirmationUrl })
+      const message = `${ownerNameStr} added you as an emergency contact on Raksha Sutra. Confirm here: ${confirmationUrl}`
+      let success = await sendTwilioMessage(phone, message, true)
+      if (!success) {
+        console.log(`WhatsApp failed for ${phone}, trying SMS...`)
+        success = await sendTwilioMessage(phone, message, false)
+      }
+      twilioSuccess = success
+      if (success) anySuccess = true
+    }
+
+    if (email) {
+      let emailSuccess = await sendConfirmationEmail({ to: email, contactName: name, ownerName: ownerNameStr, confirmationUrl })
+      if (!emailSuccess && phone && !twilioSuccess) {
+        console.log(`Email failed for ${email}, trying SMS fallback...`)
+        const message = `${ownerNameStr} added you as an emergency contact on Raksha Sutra. Confirm here: ${confirmationUrl}`
+        emailSuccess = await sendTwilioMessage(phone, message, false)
+      }
+      if (emailSuccess) anySuccess = true
+    }
+    
+    if (!anySuccess) {
+      throw new Error('All notification methods failed')
     }
   } catch (error) {
     console.error('Notification failed:', error);
