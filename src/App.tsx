@@ -35,6 +35,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { SOSOverlay } from './components/sos/SOSOverlay';
 import { SupportPage } from './components/support/SupportPage';
 import { PrivacyData } from './components/settings/PrivacyData';
+import { ActivityHistoryPage } from './components/settings/ActivityHistoryPage';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { NotFoundPage } from './components/layout/NotFoundPage';
 
@@ -377,7 +378,7 @@ export function App() {
     }
 
     if (activeSosEventId) {
-      markSosSafe(activeSosEventId, 'cancelled').catch(() =>
+      markSosSafe(activeSosEventId).catch(() =>
         notify('SOS cancelled locally; delivery update is pending.')
       );
     }
@@ -655,16 +656,7 @@ export function App() {
           )}
 
           {page === 'activity-history' && (
-            <section className="screen settings-screen">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', borderBottom: '1px solid var(--border-subtle)' }}>
-                <button onClick={() => nav('settings')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)' }}>←</button>
-                <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Activity History</h2>
-              </div>
-              <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '13px' }}>
-                <p>No recent activity found.</p>
-                <p style={{ marginTop: '8px', fontSize: '11px' }}>SOS events and journey logs will appear here.</p>
-              </div>
-            </section>
+            <ActivityHistoryPage nav={nav} userId={user?.id} />
           )}
 
           {page === 'privacy-data' && (
