@@ -17,6 +17,16 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
   const [backFile, setBackFile] = useState<File | null>(null);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [appLoc, setAppLoc] = useState<{ lat: number, lng: number } | null>(null);
+
+  React.useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setAppLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.log('Rakshak App Location denied', err)
+      );
+    }
+  }, []);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -26,7 +36,16 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
         const documentType = docType === 'Aadhaar' ? 'aadhaar' : docType === 'PAN Card' ? 'pan' : 'driving_licence';
         const { data, error } = await supabase
           .from('rakshak_applications')
-          .upsert({ user_id: userId, document_type: documentType, full_name_as_id: fullName, coverage_area: area, status: 'pending', submitted_at: new Date().toISOString() })
+          .upsert({ 
+            user_id: userId, 
+            document_type: documentType, 
+            full_name_as_id: fullName, 
+            coverage_area: area, 
+            status: 'pending', 
+            submitted_at: new Date().toISOString(),
+            coverage_latitude: appLoc?.lat ?? null,
+            coverage_longitude: appLoc?.lng ?? null
+          })
           .select('id')
           .single();
         if (error) throw error;
