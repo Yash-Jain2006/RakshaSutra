@@ -18,7 +18,7 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lon: number} | null>(null);
-  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+  const searchTimeout = useRef<number | null>(null);
 
   useEffect(() => {
     if (navigator.geolocation) {

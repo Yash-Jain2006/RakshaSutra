@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { AlertTriangle, LockKeyhole, MapPin, ShieldCheck, X } from 'lucide-react';
-import { rakshaks } from '../../data';
 import { BackHeader } from '../layout/BackHeader';
 import { RakshakApplication } from './RakshakApplication';
 
 interface RakshakComplaintFormProps {
   close: () => void;
   submit: (complaint: { rakshakId: string; description: string }) => void;
+  rakshaks: any[];
 }
 
-export const RakshakComplaintForm: React.FC<RakshakComplaintFormProps> = ({ close, submit }) => {
+export const RakshakComplaintForm: React.FC<RakshakComplaintFormProps> = ({ close, submit, rakshaks }) => {
   const [rakshakId, setRakshakId] = useState(String(rakshaks[0]?.id || '1'));
   const [description, setDescription] = useState('');
 
@@ -75,9 +75,10 @@ interface RakshakPageProps {
   notify: (msg: string) => void;
   onComplaint: (complaint: { rakshakId: string; description: string }) => void;
   userId?: string;
+  rakshaks: any[];
 }
 
-export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplaint, userId }) => {
+export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplaint, userId, rakshaks }) => {
   const [apply, setApply] = useState(false);
   const [complaint, setComplaint] = useState(false);
 
@@ -146,6 +147,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
         <RakshakComplaintForm
           close={() => setComplaint(false)}
           submit={onComplaint}
+          rakshaks={rakshaks}
         />
       )}
     </section>

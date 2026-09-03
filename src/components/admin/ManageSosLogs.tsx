@@ -1,28 +1,70 @@
-import React, { useState } from 'react';
-import { AlertTriangle, Clock, MapPin, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Clock, MapPin, Search, RefreshCw } from 'lucide-react';
+import { configuredClient } from '../../services/safetyService';
 
 interface SosLogItem {
   id: string;
   userName: string;
   startedAt: string;
   status: 'active' | 'safe' | 'cancelled';
-  locationSource: 'precise' | 'last_known' | 'fallback';
+  locationSource: string;
   deliveriesCount: number;
   duration: string;
   flagged?: boolean;
 }
 
-const mockLogs: SosLogItem[] = [
-  { id: 'sos-101', userName: 'Ananya Sharma', startedAt: 'Today, 8:15 PM', status: 'safe', locationSource: 'precise', deliveriesCount: 5, duration: '4m 12s' },
-  { id: 'sos-102', userName: 'Pooja Verma', startedAt: 'Today, 6:40 PM', status: 'cancelled', locationSource: 'fallback', deliveriesCount: 3, duration: '1m 05s' },
-  { id: 'sos-103', userName: 'User #8492', startedAt: 'Yesterday', status: 'safe', locationSource: 'precise', deliveriesCount: 6, duration: '12m 30s', flagged: true },
-];
-
 export const ManageSosLogs: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [logs, setLogs] = useState<SosLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredLogs = mockLogs.filter((log) => {
+  const fetchLogs = async () => {
+    setLoading(true);
+    const { data, error } = await configuredClient()
+      .from('sos_events')
+      .select('id, status, location_source, started_at, safe_at, cancelled_at, ended_at, profiles(display_name), sos_event_deliveries(count)')
+      .order('started_at', { ascending: false })
+      .limit(50);
+      
+    if (data && !error) {
+      const mappedLogs = data.map((e: any) => {
+        // Calculate duration
+        const start = new Date(e.started_at).getTime();
+        const endTimeStr = e.safe_at || e.cancelled_at || e.ended_at;
+        const end = endTimeStr ? new Date(endTimeStr).getTime() : Date.now();
+        const diffSecs = Math.floor((end - start) / 1000);
+        const mins = Math.floor(diffSecs / 60);
+        const secs = diffSecs % 60;
+        const duration = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+        // Format date
+        const d = new Date(e.started_at);
+        const dateStr = d.toLocaleDateString() === new Date().toLocaleDateString() 
+          ? `Today, ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` 
+          : d.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'});
+
+        return {
+          id: e.id,
+          userName: e.profiles?.display_name || 'Unknown User',
+          startedAt: dateStr,
+          status: e.status,
+          locationSource: e.location_source,
+          deliveriesCount: e.sos_event_deliveries?.[0]?.count || 0,
+          duration: duration,
+          flagged: false, // Flagging logic could be added based on recent volume
+        };
+      });
+      setLogs(mappedLogs);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, []);
+
+  const filteredLogs = logs.filter((log) => {
     const matchesSearch = log.userName.toLowerCase().includes(search.toLowerCase()) || log.id.includes(search);
     const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -31,8 +73,13 @@ export const ManageSosLogs: React.FC = () => {
   return (
     <div className="admin-card">
       <div className="admin-card-title">
-        <h3>SOS Audit Logs (Phase 1)</h3>
-        <span className="admin-live">Real-time DB Audited</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <h3>SOS Audit Logs</h3>
+          <button onClick={fetchLogs} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}>
+            <RefreshCw size={14} color="#64748b" className={loading ? 'spinning' : ''} />
+          </button>
+        </div>
+        <span className="admin-live">Live Database</span>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>

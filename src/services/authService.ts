@@ -14,9 +14,9 @@ export async function getCurrentSession() {
   return data.session;
 }
 
-export function onAuthStateChange(callback: (session: any) => void) {
-  return configuredClient().auth.onAuthStateChange((_event, session) =>
-    callback(session),
+export function onAuthStateChange(callback: (session: any, event: string) => void) {
+  return configuredClient().auth.onAuthStateChange((event, session) =>
+    callback(session, event),
   );
 }
 

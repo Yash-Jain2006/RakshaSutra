@@ -3,30 +3,61 @@ import { AlertTriangle, ChevronRight, FileText, HeartHandshake, MapPin, Plus, Sh
 import type { IncidentReport } from '../../types/models';
 import { BackHeader } from '../layout/BackHeader';
 import { CommunityGuidelines, ReportComposer } from './CommunityGuidelines';
+import { configuredClient } from '../../services/safetyService';
+import { getCurrentSession } from '../../services/authService';
 
 interface CommunityPageProps {
   nav: (page: string) => void;
-  reports: IncidentReport[];
-  setReports: React.Dispatch<React.SetStateAction<IncidentReport[]>>;
 }
 
-export const CommunityPage: React.FC<CommunityPageProps> = ({ nav, reports, setReports }) => {
+export const CommunityPage: React.FC<CommunityPageProps> = ({ nav }) => {
   const [composer, setComposer] = useState(false);
   const [tab, setTab] = useState<'Feed' | 'Ratings'>('Feed');
   const [guidelines, setGuidelines] = useState(false);
+  const [reports, setReports] = useState<any[]>([]);
 
-  const submitReport = (report: Partial<IncidentReport>) => {
-    const newReport: IncidentReport = {
-      id: Date.now(),
-      place: report.place || 'Unknown Place',
-      text: report.text || '',
+
+  const fetchReports = async () => {
+    const { data } = await configuredClient()
+      .from('incident_reports')
+      .select('*, profiles(display_name)')
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setReports(data.map((r: any) => ({
+        id: r.id,
+        place: r.place,
+        text: r.description,
+        rating: r.rating,
+        anonymous: r.anonymous,
+        time: new Date(r.created_at).toLocaleDateString(),
+        status: r.status,
+        userName: r.profiles?.display_name || 'Anonymous member'
+      })));
+    }
+  };
+
+  React.useEffect(() => {
+    fetchReports();
+  }, []);
+
+  const submitReport = async (report: Partial<IncidentReport>) => {
+    const session = await getCurrentSession();
+    if (!session?.user) return;
+    
+    const { error } = await configuredClient().from('incident_reports').insert({
+      user_id: session.user.id,
+      place: report.place || 'Unknown',
+      description: report.text || '',
       rating: report.rating || 'Unsafe',
       anonymous: Boolean(report.anonymous),
-      time: 'Just now',
-      status: 'Pending review',
-    };
-    setReports([newReport, ...reports]);
-    setComposer(false);
+      status: 'pending'
+    });
+
+    if (!error) {
+      await fetchReports();
+      setComposer(false);
+    }
   };
 
   return (
@@ -90,7 +121,7 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({ nav, reports, setR
               </h3>
               <p>{report.text}</p>
               <footer>
-                <span>{report.anonymous ? 'Anonymous member' : 'Ananya Sharma'}</span>
+                <span>{report.anonymous ? 'Anonymous member' : report.userName}</span>
                 <b>{report.status}</b>
               </footer>
             </article>

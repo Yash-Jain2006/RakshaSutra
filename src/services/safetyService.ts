@@ -1,7 +1,7 @@
 import { supabase } from "../lib/supabase";
 import type { EmergencyContact } from "../types/models";
 
-function configuredClient() {
+export function configuredClient() {
   if (!supabase) throw new Error("Supabase is not configured.");
   return supabase;
 }
@@ -31,6 +31,32 @@ export function toContactModel(row: {
       .toUpperCase(),
     color: "#6255ec",
   };
+}
+
+export async function listActiveRakshaks() {
+  const { data, error } = await configuredClient()
+    .from('rakshak_profiles')
+    .select(`
+      profile_id,
+      coverage_area,
+      coverage_latitude,
+      coverage_longitude,
+      average_rating,
+      profiles!rakshak_profiles_profile_id_fkey ( display_name )
+    `)
+    .eq('status', 'verified');
+    
+  if (error) throw error;
+  
+  return (data || []).map((row: any) => ({
+    id: row.profile_id,
+    name: row.profiles?.display_name || 'Verified Rakshak',
+    area: row.coverage_area,
+    latitude: row.coverage_latitude,
+    longitude: row.coverage_longitude,
+    rating: row.average_rating,
+    initials: (row.profiles?.display_name || 'VR').split(' ').map((p: string) => p[0]).slice(0, 2).join('').toUpperCase(),
+  }));
 }
 
 export async function listEmergencyContacts() {

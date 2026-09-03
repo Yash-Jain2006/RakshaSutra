@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Map as MapIcon, Settings, SlidersHorizontal, UsersRound } from 'lucide-react';
+import { Compass, Map as MapIcon, Settings, SlidersHorizontal, UsersRound, ArrowLeft } from 'lucide-react';
 
 interface BottomNavProps {
   page: string;

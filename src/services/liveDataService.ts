@@ -1,4 +1,4 @@
-﻿import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import type { IncidentReport, RakshakHelper, SafePlace } from '../types/models';
 
 type SafePlaceCategory = 'police' | 'hospital' | 'cafe' | 'fuel_station';
@@ -86,6 +86,9 @@ export async function listSafePlaces(): Promise<SafePlace[]> {
     address: row.address,
     latitude: row.latitude,
     longitude: row.longitude,
+    distance: '0 km',
+    x: 0,
+    y: 0,
   }));
 }
 

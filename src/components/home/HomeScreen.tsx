@@ -11,6 +11,7 @@ import {
   Phone,
   Zap,
   Info,
+  ShieldCheck,
 } from 'lucide-react';
 import type { EmergencyContact } from '../../types/models';
 import { SectionTitle } from '../common/SectionTitle';
@@ -34,6 +35,7 @@ interface HomeScreenProps {
   shareLocation: () => void;
   locationState: string;
   cityLabel: string;
+  isRakshak: boolean;
   nav: (page: string) => void;
   notify: (msg: string) => void;
   onStartFakeCall: () => void;
@@ -56,6 +58,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   shareLocation,
   locationState,
   cityLabel,
+  isRakshak,
   nav,
   notify,
   onStartFakeCall,
@@ -108,7 +111,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <p>
             {greeting.text} <span>{greeting.emoji}</span>
           </p>
-          <h1>{displayName}</h1>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {displayName}
+            {isRakshak && (
+              <span 
+                title="Verified Rakshak" 
+                style={{ 
+                  color: '#16a34a', 
+                  fontSize: '13px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: '#dcfce7',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontWeight: 600
+                }}
+              >
+                <ShieldCheck size={14} /> Verified
+              </span>
+            )}
+          </h1>
           <span className="location">
             <MapPin size={12} />
             {cityLabel || 'Locating…'}

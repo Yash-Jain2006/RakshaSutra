@@ -7,7 +7,6 @@ interface SOSOverlayProps {
   elapsed: number;
   cancel: () => void;
   deliveries?: SosDelivery[];
-  isDemo?: boolean;
   isOffline?: boolean;
 }
 
@@ -16,7 +15,6 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
   elapsed,
   cancel,
   deliveries = [],
-  isDemo = false,
   isOffline = false,
 }) => {
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
@@ -284,9 +282,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
             <div>
               <b>Rakshak Match Status</b>
               <small>
-                {isDemo
-                  ? '6 local Rakshaks queued in demo network'
-                  : 'Searching nearest verified Rakshaks within 2.5 km...'}
+                Searching nearest verified Rakshaks within 2.5 km...
               </small>
             </div>
             <i className="queued">Searching</i>

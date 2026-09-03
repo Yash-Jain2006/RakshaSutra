@@ -6,38 +6,96 @@ export interface RakshakAppItem {
   name: string;
   docType: string;
   area: string;
-  status: 'pending' | 'verified' | 'rejected' | 'inactive';
+  status: 'pending' | 'verified' | 'rejected' | 'inactive' | 'closed';
   submittedAt: string;
 }
 
-const initialApps: RakshakAppItem[] = [
-  { id: '1', name: 'Arjun Rao', docType: 'Aadhaar', area: 'HSR Layout, Bengaluru', status: 'pending', submittedAt: 'Today, 2:15 PM' },
-  { id: '2', name: 'Kavya Nair', docType: 'Driving Licence', area: 'Indiranagar', status: 'pending', submittedAt: 'Yesterday' },
-  { id: '3', name: 'Priya Kulkarni', docType: 'Aadhaar', area: 'Koramangala', status: 'verified', submittedAt: '3 days ago' },
-];
+
 
 interface ManageRakshaksProps {
   notify: (msg: string) => void;
 }
 
+import { configuredClient } from '../../services/safetyService';
+
 export const ManageRakshaks: React.FC<ManageRakshaksProps> = ({ notify }) => {
-  const [apps, setApps] = useState<RakshakAppItem[]>(initialApps);
-  const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected'>('pending');
+  const [apps, setApps] = useState<RakshakAppItem[]>([]);
+  const [filter, setFilter] = useState<'pending' | 'verified' | 'rejected' | 'inactive' | 'closed'>('pending');
 
   const filteredApps = apps.filter((a) => a.status === filter);
 
-  const handleApprove = (id: string) => {
-    setApps((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: 'verified' } : a))
-    );
-    notify('Rakshak application verified & approved. Audit logged.');
+  const fetchApps = async () => {
+    const { data, error } = await configuredClient()
+      .from('rakshak_applications')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+
+    if (data && !error) {
+      setApps(
+        data.map((row: any) => ({
+          id: row.id,
+          name: row.full_name_as_id,
+          docType: row.document_type,
+          area: row.coverage_area,
+          status: row.status,
+          submittedAt: new Date(row.submitted_at).toLocaleString(),
+        }))
+      );
+    }
   };
 
-  const handleReject = (id: string) => {
-    setApps((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status: 'rejected' } : a))
-    );
-    notify('Rakshak application rejected. Audit logged.');
+  React.useEffect(() => {
+    fetchApps();
+  }, []);
+
+  const handleApprove = async (id: string) => {
+    const { error } = await configuredClient().rpc('approve_rakshak_application', { app_id: id });
+    if (error) {
+      notify('Failed to approve application.');
+    } else {
+      notify('Rakshak application verified & approved. Audit logged.');
+      fetchApps();
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    const { error } = await configuredClient().rpc('reject_rakshak_application', { app_id: id });
+    if (error) {
+      notify('Failed to reject application.');
+    } else {
+      notify('Rakshak application rejected. Audit logged.');
+      fetchApps();
+    }
+  };
+
+  const handleSuspend = async (id: string) => {
+    const { error } = await configuredClient().rpc('suspend_rakshak', { app_id: id });
+    if (error) {
+      notify('Failed to suspend Rakshak.');
+    } else {
+      notify('Rakshak suspended successfully.');
+      fetchApps();
+    }
+  };
+
+  const handleClose = async (id: string) => {
+    const { error } = await configuredClient().rpc('close_rakshak', { app_id: id });
+    if (error) {
+      notify('Failed to close Rakshak account.');
+    } else {
+      notify('Rakshak account closed successfully.');
+      fetchApps();
+    }
+  };
+
+  const handleActivate = async (id: string) => {
+    const { error } = await configuredClient().rpc('activate_rakshak', { app_id: id });
+    if (error) {
+      notify('Failed to activate Rakshak.');
+    } else {
+      notify('Rakshak activated successfully.');
+      fetchApps();
+    }
   };
 
   return (
@@ -50,8 +108,8 @@ export const ManageRakshaks: React.FC<ManageRakshaksProps> = ({ notify }) => {
       </div>
 
       {/* Tabs */}
-      <div className="admin-sub-tabs" style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
-        {(['pending', 'verified', 'rejected'] as const).map((tab) => (
+      <div className="admin-sub-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+        {(['pending', 'verified', 'inactive', 'closed', 'rejected'] as const).map((tab) => (
           <button
             key={tab}
             className={filter === tab ? 'active' : ''}
@@ -87,14 +145,16 @@ export const ManageRakshaks: React.FC<ManageRakshaksProps> = ({ notify }) => {
               borderRadius: '12px',
             }}
           >
-            <div>
-              <b style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ flex: 1, paddingRight: '12px' }}>
+              <b style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                 {item.name}
                 {item.status === 'verified' && <ShieldCheck size={14} color="#22c55e" />}
               </b>
-              <small style={{ color: '#64748b', fontSize: '11px' }}>
-                Doc: {item.docType} · Area: {item.area} · Submitted: {item.submittedAt}
-              </small>
+              <div style={{ color: '#64748b', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span>Doc: {item.docType}</span>
+                <span>Area: {item.area}</span>
+                <span>Submitted: {item.submittedAt}</span>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -116,11 +176,27 @@ export const ManageRakshaks: React.FC<ManageRakshaksProps> = ({ notify }) => {
                 </>
               )}
               {item.status === 'verified' && (
+                <>
+                  <button
+                    onClick={() => handleSuspend(item.id)}
+                    style={{ padding: '6px 10px', background: '#f59e0b', color: '#fff', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}
+                  >
+                    Suspend
+                  </button>
+                  <button
+                    onClick={() => handleClose(item.id)}
+                    style={{ padding: '6px 10px', background: '#ef4444', color: '#fff', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}
+                  >
+                    Close
+                  </button>
+                </>
+              )}
+              {item.status === 'inactive' && (
                 <button
-                  onClick={() => handleReject(item.id)}
-                  style={{ padding: '6px 10px', background: '#f59e0b', color: '#fff', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}
+                  onClick={() => handleActivate(item.id)}
+                  style={{ padding: '6px 10px', background: '#22c55e', color: '#fff', borderRadius: '8px', fontSize: '11px', fontWeight: 600 }}
                 >
-                  Deactivate
+                  <Check size={14} /> Activate
                 </button>
               )}
             </div>

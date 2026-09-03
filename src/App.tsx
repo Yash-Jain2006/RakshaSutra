@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, Phone, ShieldCheck, UsersRound } from 'lucide-react';
-import { initialContacts, rakshaks, reportSeed } from './data.ts';
-import { isSupabaseConfigured } from './lib/supabase.ts';
+import { initialContacts } from './data.ts';
+
 import { getCurrentSession, onAuthStateChange, signOut } from './services/authService.ts';
 import {
   createEmergencyContact,
@@ -10,6 +10,7 @@ import {
   dispatchSos,
   dispatchJourney,
   dispatchLocationShare,
+  listActiveRakshaks,
   listEmergencyContacts,
   markSosSafe,
   submitRakshakComplaint,
@@ -35,6 +36,7 @@ import { SOSOverlay } from './components/sos/SOSOverlay';
 import { SupportPage } from './components/support/SupportPage';
 import { PrivacyData } from './components/settings/PrivacyData';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
+import { NotFoundPage } from './components/layout/NotFoundPage';
 
 
 export function App() {
@@ -42,6 +44,7 @@ export function App() {
   const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
   const [page, setPage] = useState('home');
   const [contacts, setContacts] = useState<EmergencyContact[]>(initialContacts as EmergencyContact[]);
+  const [rakshaks, setRakshaks] = useState<any[]>([]);
   const [journey, setJourney] = useState(false);
   const [journeyDestination, setJourneyDestination] = useState('');
   const [activeJourneyContactIds, setActiveJourneyContactIds] = useState<(string | number)[]>([]);
@@ -51,16 +54,14 @@ export function App() {
   const [toast, setToast] = useState('');
   const [fakeCall, setFakeCall] = useState(false);
   const [locationState, setLocationState] = useState<'ready' | 'locating' | 'shared' | 'fallback'>('ready');
-  const [reports, setReports] = useState<IncidentReport[]>(reportSeed as IncidentReport[]);
+
   const [dark, setDark] = useState(() => {
     const saved = localStorage.getItem('theme');
     if (saved) return saved === 'dark';
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   });
   const [sosPressing, setSosPressing] = useState(false);
-  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out' | 'demo'>(
-    isSupabaseConfigured ? 'checking' : 'demo'
-  );
+  const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { display_name?: string } } | null>(null);
   const [activeSosEventId, setActiveSosEventId] = useState<string | null>(null);
   const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
@@ -177,7 +178,7 @@ export function App() {
 
   // Auth State Listener
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+
     let mounted = true;
 
     getCurrentSession()
@@ -208,17 +209,30 @@ export function App() {
 
   // Fetch Emergency Contacts when signed in
   useEffect(() => {
-    if (!user || !isSupabaseConfigured) return;
+    if (!user) return;
     let mounted = true;
 
     listEmergencyContacts()
       .then((remoteContacts) => mounted && setContacts(remoteContacts as EmergencyContact[]))
       .catch(() => mounted && notify('Could not load saved contacts. Showing local data.'));
-
+      
     return () => {
       mounted = false;
     };
   }, [user]);
+
+  // Fetch rakshaks on mount and whenever returning to home/rakshak page
+  useEffect(() => {
+    let mounted = true;
+    if (page === 'home' || page === 'rakshak') {
+      listActiveRakshaks()
+        .then((realRakshaks) => mounted && setRakshaks(realRakshaks))
+        .catch(console.error);
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [page]);
 
   const notify = (message: string) => setToast(message);
 
@@ -266,8 +280,8 @@ export function App() {
   const shareLocation = async () => {
     await requestLocation();
     
-    if (!user || !isSupabaseConfigured) {
-      notify('Location shared locally (Demo Mode).');
+    if (!user) {
+      notify('You must be signed in to share location.');
       return;
     }
     
@@ -305,8 +319,8 @@ export function App() {
 
     const location = await requestLocation();
 
-    if (!user || !isSupabaseConfigured) {
-      notify('SOS Active in Demo Mode. Alerts queued locally.');
+    if (!user) {
+      notify('You must be signed in to trigger SOS.');
       return;
     }
 
@@ -362,7 +376,7 @@ export function App() {
       new Notification('✅ SOS Cancelled', { body: 'You marked yourself safe. Your contacts have been notified.' });
     }
 
-    if (activeSosEventId && isSupabaseConfigured) {
+    if (activeSosEventId) {
       markSosSafe(activeSosEventId, 'cancelled').catch(() =>
         notify('SOS cancelled locally; delivery update is pending.')
       );
@@ -398,9 +412,8 @@ export function App() {
       color: '#6255ec',
     };
 
-    if (!user || !isSupabaseConfigured) {
-      setContacts([...contacts, newContact]);
-      notify('Contact added locally (Demo Mode).');
+    if (!user) {
+      notify('You must be signed in to add contacts.');
       return;
     }
 
@@ -425,7 +438,7 @@ export function App() {
     const previousContacts = contacts;
     setContacts(contacts.filter((c) => c.id !== contactId));
 
-    if (!user || !isSupabaseConfigured) return;
+    if (!user) return;
     if (String(contactId).startsWith('seed-')) return;
 
     try {
@@ -439,8 +452,8 @@ export function App() {
   };
 
   const reportRakshak = async (complaint: { rakshakId: string; description: string }) => {
-    if (!user || !isSupabaseConfigured) {
-      notify('Your concern is recorded in demo mode. Sent to safety team.');
+    if (!user) {
+      notify('You must be signed in to report a Rakshak.');
       return;
     }
     try {
@@ -526,7 +539,7 @@ export function App() {
   }
 
   if (authStatus === 'checking') return <LoadingScreen />;
-  if (authStatus === 'signed-out' || authStatus === 'demo') return <AuthScreen onBack={() => { setStarted(false); setEntryScreen('welcome'); }} />;
+  if (authStatus === 'signed-out') return <AuthScreen onBack={() => { setStarted(false); setEntryScreen('welcome'); }} />;
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
@@ -566,7 +579,7 @@ export function App() {
               onEndJourney={() => {
                 setJourney(false);
                 const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
-                if (isSupabaseConfigured && journeyDestination) {
+                if (journeyDestination) {
                   dispatchJourney(journeyDestination, activeJourneyContactIds, trackingLink, 'arrived').catch(err => {
                     console.error("Failed to dispatch arrival notifications:", err);
                   });
@@ -575,6 +588,7 @@ export function App() {
                 setActiveJourneyContactIds([]);
                 notify('You have arrived safely. Tracking stopped.');
               }}
+              isRakshak={rakshaks.some((r) => r.id === user?.id)}
               sendSOS={sendSOS}
               startSOSHold={startSOSHold}
               cancelSOSHold={cancelSOSHold}
@@ -592,15 +606,16 @@ export function App() {
           {page === 'map' && <MapPage nav={nav} />}
 
           {page === 'community' && (
-            <CommunityPage nav={nav} reports={reports} setReports={setReports} />
+            <CommunityPage nav={nav} />
           )}
 
           {page === 'rakshak' && (
             <RakshakPage
-              userId={user?.id}
               nav={nav}
               notify={notify}
               onComplaint={reportRakshak}
+              userId={user?.id}
+              rakshaks={rakshaks}
             />
           )}
 
@@ -623,8 +638,8 @@ export function App() {
               record={record}
               setRecord={setRecord}
               displayName={displayName}
-              email={user?.email || 'ananya.s@email.com'}
-              onSignOut={isSupabaseConfigured ? handleSignOut : undefined}
+              email={user?.email || ''}
+              onSignOut={handleSignOut}
               notify={notify}
             />
           )}
@@ -663,7 +678,11 @@ export function App() {
 
 
           {page === 'admin' && isAdmin && (
-            <AdminPanel nav={nav} reports={reports} notify={notify} />
+            <AdminPanel nav={nav} notify={notify} />
+          )}
+
+          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support'].includes(page) && (
+            <NotFoundPage nav={nav} />
           )}
 
           {['home', 'map', 'rakshak', 'settings', 'admin'].includes(page) && (
@@ -685,7 +704,7 @@ export function App() {
           elapsed={sosTime}
           cancel={cancelSOS}
           deliveries={deliveries}
-          isDemo={!isSupabaseConfigured}
+
           isOffline={!navigator.onLine}
         />
       )}
@@ -704,10 +723,13 @@ export function App() {
 
             const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
             
-            if (isSupabaseConfigured) {
-              dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
-                console.error("Failed to dispatch journey emails:", err);
-              });
+            dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
+              console.error("Failed to dispatch journey emails:", err);
+            });
+
+            if (activeSosEventId) {
+              markSosSafe(activeSosEventId).catch(err => console.error(err));
+              setActiveSosEventId(null);
             }
 
             const selectedContacts = contacts.filter((c) => selectedContactIds.includes(c.id));

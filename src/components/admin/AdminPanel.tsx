@@ -4,31 +4,58 @@ import type { IncidentReport } from '../../types/models';
 import { BackHeader } from '../layout/BackHeader';
 import { ManageRakshaks } from './ManageRakshaks';
 import { ManageSosLogs } from './ManageSosLogs';
+import { ManageReports } from './ManageReports';
+
+import { configuredClient } from '../../services/safetyService';
 
 interface AdminPanelProps {
   nav: (page: string) => void;
-  reports: IncidentReport[];
   notify: (msg: string) => void;
 }
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, reports, notify }) => {
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Phase2Stub'>('Overview');
+export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Reports' | 'Phase2Stub'>('Overview');
   const [stubTitle, setStubTitle] = useState('');
+  const [metrics, setMetrics] = useState({ sos: 0, rakshaks: 0, reports: 0, places: 0 });
+
+  React.useEffect(() => {
+    if (activeTab !== 'Overview') return;
+    
+    const fetchMetrics = async () => {
+      const client = configuredClient();
+      
+      const [sosRes, rakshaksRes, reportsRes, placesRes] = await Promise.all([
+        client.from('sos_events').select('*', { count: 'exact', head: true }),
+        client.from('rakshak_profiles').select('*', { count: 'exact', head: true }).eq('status', 'verified'),
+        client.from('incident_reports').select('*', { count: 'exact', head: true }),
+        client.from('safe_places').select('*', { count: 'exact', head: true })
+      ]);
+
+      setMetrics({
+        sos: sosRes.count || 0,
+        rakshaks: rakshaksRes.count || 0,
+        reports: reportsRes.count || 0,
+        places: placesRes.count || 0
+      });
+    };
+
+    fetchMetrics().catch(console.error);
+  }, [activeTab]);
 
   const menu = [
     'Overview',
     'Rakshaks',
     'SOS Logs',
+    'Reports',
     'Zones (P2)',
     'Safe Places (P2)',
-    'Reports (P2)',
     'Users (P2)',
     'Supports (P2)',
   ];
 
   const handleTabClick = (item: string) => {
-    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs') {
-      setActiveTab(item);
+    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs' || item === 'Reports') {
+      setActiveTab(item as any);
     } else {
       setStubTitle(item);
       setActiveTab('Phase2Stub');
@@ -49,6 +76,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, reports, notify }) 
             (activeTab === 'Overview' && item === 'Overview') ||
             (activeTab === 'Rakshaks' && item === 'Rakshaks') ||
             (activeTab === 'SOS Logs' && item === 'SOS Logs') ||
+            (activeTab === 'Reports' && item === 'Reports') ||
             (activeTab === 'Phase2Stub' && item === stubTitle);
 
           return (
@@ -73,22 +101,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, reports, notify }) 
           <div className="metric-grid">
             <article className="metric red">
               <span><AlertTriangle size={19} /></span>
-              <b>12</b>
+              <b>{metrics.sos}</b>
               <small>SOS alerts today</small>
             </article>
             <article className="metric purple">
               <span><ShieldCheck size={19} /></span>
-              <b>86</b>
+              <b>{metrics.rakshaks}</b>
               <small>Active Rakshaks</small>
             </article>
             <article className="metric orange">
               <span><FileText size={19} /></span>
-              <b>{reports.length + 2}</b>
-              <small>Pending reports</small>
+              <b>{metrics.reports}</b>
+              <small>Community reports</small>
             </article>
             <article className="metric green">
               <span><MapPin size={19} /></span>
-              <b>29</b>
+              <b>{metrics.places}</b>
               <small>Safe places</small>
             </article>
           </div>
@@ -113,6 +141,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, reports, notify }) 
 
       {activeTab === 'Rakshaks' && <ManageRakshaks notify={notify} />}
       {activeTab === 'SOS Logs' && <ManageSosLogs />}
+      {activeTab === 'Reports' && <ManageReports notify={notify} />}
 
       {activeTab === 'Phase2Stub' && (
         <div className="admin-card coming-card" style={{ textAlign: 'center', padding: '32px 16px' }}>
