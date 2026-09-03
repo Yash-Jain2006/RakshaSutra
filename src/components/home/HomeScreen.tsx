@@ -13,6 +13,7 @@ import {
   Info,
   ShieldCheck,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { EmergencyContact } from '../../types/models';
 import { SectionTitle } from '../common/SectionTitle';
 import { JourneyBanner } from '../journey/JourneyBanner';
@@ -63,7 +64,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   notify,
   onStartFakeCall,
 }) => {
-  // Dynamic greeting based on current hour — no "good night"
+  const { t } = useTranslation();
   const [showNotif, setShowNotif] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const bellRef = useRef<HTMLButtonElement>(null);
@@ -99,10 +100,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
-    if (hour >= 0 && hour < 12) return { text: 'Good morning', emoji: '🌅' };
-    if (hour >= 12 && hour < 18) return { text: 'Good afternoon', emoji: '☀️' };
-    return { text: 'Good evening', emoji: '🌆' };
-  }, []);
+    if (hour >= 0 && hour < 12) return { text: t('home.good_morning', 'Good morning'), emoji: '🌅' };
+    if (hour >= 12 && hour < 18) return { text: t('home.good_afternoon', 'Good afternoon'), emoji: '☀️' };
+    return { text: t('home.good_evening', 'Good evening'), emoji: '🌆' };
+  }, [t]);
 
   return (
     <section className="screen home-screen">
@@ -128,13 +129,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   fontWeight: 600
                 }}
               >
-                <ShieldCheck size={14} /> Verified
+                <ShieldCheck size={14} /> {t('rakshak.verified', 'Verified')}
               </span>
             )}
           </h1>
           <span className="location">
             <MapPin size={12} />
-            {cityLabel || 'Locating…'}
+            {cityLabel || t('home.locating', 'Locating…')}
           </span>
         </div>
         <div className="header-actions">
@@ -156,7 +157,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
           <div className="notif-list">
             {notifications.length === 0 ? (
-              <div className="notif-empty">No new alerts</div>
+              <div className="notif-empty">{t('home.no_alerts', 'No new alerts')}</div>
             ) : (
               notifications.map((n) => (
                 <div key={n.id} className={`notif-item ${n.unread ? 'unread' : ''}`}>
@@ -212,13 +213,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           >
             <AlertTriangle size={36} />
             <b>SOS</b>
-            <span>{sosPressing ? 'KEEP HOLDING…' : 'HOLD FOR HELP'}</span>
+            <span>{sosPressing ? t('home.sos_keep_holding', 'KEEP HOLDING…') : t('home.sos_hold_help', 'HOLD FOR HELP')}</span>
           </button>
         </div>
         <p>
           {sosPressing
-            ? 'Keep holding — SOS will send in 3 seconds'
-            : 'Press and hold 3 seconds to alert your Rakshak network'}
+            ? t('home.sos_desc_holding', 'Keep holding — SOS will send in 3 seconds')
+            : t('home.sos_desc', 'Press and hold 3 seconds to alert your Rakshak network')}
         </p>
       </div>
 
@@ -226,55 +227,47 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <button className="location-button" onClick={shareLocation}>
         <Navigation size={18} />
         {locationState === 'locating'
-          ? 'Locating you…'
+          ? t('home.locating', 'Locating you…')
           : locationState === 'shared'
-            ? 'Location Broadcasted'
-            : 'Send My Location'}
+            ? t('home.location_shared', 'Location Broadcasted')
+            : t('home.send_location', 'Send My Location')}
       </button>
 
       {/* Safety Action Tiles */}
       <div className="safety-actions">
         <button className="unsafe" onClick={() => nav('community')}>
           <AlertTriangle size={19} />
-          <span>Feeling Unsafe</span>
+          <span>{t('home.feeling_unsafe', 'Feeling Unsafe')}</span>
         </button>
         <button className="assist" onClick={() => nav('support')}>
           <CircleHelp size={19} />
-          <span>
-            Need
-            <br />
-            Assistance
-          </span>
+          <span>{t('home.need_assistance', 'Need Assistance')}</span>
         </button>
         <button className="danger" onClick={sendSOS}>
           <Zap size={19} />
-          <span>
-            Immediate
-            <br />
-            Danger
-          </span>
+          <span>{t('home.immediate_danger', 'Immediate Danger')}</span>
         </button>
       </div>
 
       {/* Safety Toolkit Shortcuts */}
-      <SectionTitle title="Safety toolkit" action="See all" onClick={() => nav('map')} />
+      <SectionTitle title={t('home.safety_toolkit', 'Safety toolkit')} action={t('home.see_all', 'See all')} onClick={() => nav('map')} />
       <div className="toolkit">
         <button onClick={() => nav('map')}>
           <MapIcon />
-          <span>Safe routes</span>
+          <span>{t('home.safe_routes', 'Safe routes')}</span>
         </button>
         <button onClick={() => nav('community')}>
           <HeartHandshake />
-          <span>Community</span>
+          <span>{t('home.community', 'Community')}</span>
         </button>
         <button onClick={onStartFakeCall}>
           <Phone />
-          <span>Fake call</span>
+          <span>{t('home.fake_call', 'Fake call')}</span>
         </button>
       </div>
 
       {/* Emergency Contacts Preview */}
-      <SectionTitle title="Emergency contacts" action="Manage" onClick={() => nav('contacts')} />
+      <SectionTitle title={t('home.emergency_contacts', 'Emergency contacts')} action={t('home.manage', 'Manage')} onClick={() => nav('contacts')} />
       <div className="contact-preview">
         {contacts.slice(0, 2).map((contact) => (
           <div className="contact-row" key={contact.id}>

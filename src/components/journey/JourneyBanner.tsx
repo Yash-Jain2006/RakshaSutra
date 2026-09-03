@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CheckCircle2, Pause, Play, Navigation } from 'lucide-react';
 import type { EmergencyContact } from '../../types/models';
+import { useTranslation } from 'react-i18next';
 
 interface JourneyBannerProps {
   active: boolean;
@@ -21,6 +22,7 @@ export const JourneyBanner: React.FC<JourneyBannerProps> = ({
   onResumeJourney,
   onEndJourney,
 }) => {
+  const { t } = useTranslation();
   const [isPaused, setIsPaused] = useState(false);
 
   const handleTogglePause = (e: React.MouseEvent) => {
@@ -45,8 +47,8 @@ export const JourneyBanner: React.FC<JourneyBannerProps> = ({
       <button className="journey-banner" onClick={onOpenSetup} aria-label="Start Journey Mode">
         <span className="live-dot" style={{ background: '#94a3b8' }} />
         <span>
-          <b>Journey Mode off</b>
-          <small> — Tap to set destination &amp; share live tracking</small>
+          <b>{t('home.journey_off', 'Journey Mode off')}</b>
+          <small> — {t('home.journey_desc', 'Tap to set destination & share live tracking')}</small>
         </span>
         <span className="toggle">
           <i />

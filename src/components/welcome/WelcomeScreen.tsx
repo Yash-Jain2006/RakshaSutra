@@ -28,13 +28,30 @@ interface WelcomeScreenProps {
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak }) => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [languageOpen, setLanguageOpen] = useState(false);
-  const [selectedLang, setSelectedLang] = useState(i18n.language || 'en');
+  const [tempLang, setTempLang] = useState<string | null>(null);
+
+  const currentLang = tempLang || i18n.language || 'en';
+
+  const handleToggleMenu = () => {
+    setLanguageOpen((open) => {
+      if (!open) {
+        setTempLang(null); // Reset when opening
+      }
+      return !open;
+    });
+  };
 
   const handleSelectLang = (code: string) => {
-    setSelectedLang(code);
-    i18n.changeLanguage(code);
+    setTempLang(code);
+  };
+
+  const handleConfirmLang = () => {
+    if (tempLang) {
+      i18n.changeLanguage(tempLang);
+      localStorage.setItem('language', tempLang);
+    }
     setLanguageOpen(false);
   };
 
@@ -51,41 +68,62 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak
           <button
             className="welcome-lang-btn"
             type="button"
-            onClick={() => setLanguageOpen((open) => !open)}
+            onClick={handleToggleMenu}
             aria-expanded={languageOpen}
             aria-label="Choose language"
           >
             <img src="/language-icon.png" alt="" />
           </button>
           {languageOpen && (
-            <div className="welcome-language-menu" role="menu" aria-label="Choose language">
-              <div className="welcome-language-menu-header">Select Language</div>
-              {LANGUAGES.map((lang) => (
+            <div className="welcome-language-menu" role="menu" aria-label="Choose language" style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="welcome-language-menu-header">{t('language.select', 'Select Language')}</div>
+              <div style={{ overflowY: 'auto', maxHeight: '400px', paddingBottom: '8px' }}>
+                {LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    role="menuitem"
+                    className={currentLang === lang.code ? 'active' : ''}
+                    onClick={() => handleSelectLang(lang.code)}
+                  >
+                    {lang.label}
+                    {currentLang === lang.code && <span className="lang-check">✓</span>}
+                  </button>
+                ))}
+              </div>
+              <div style={{ padding: '8px', borderTop: '1px solid #e2e8f0', background: '#fff', borderRadius: '0 0 16px 16px' }}>
                 <button
-                  key={lang.code}
                   type="button"
-                  role="menuitem"
-                  className={selectedLang === lang.code ? 'active' : ''}
-                  onClick={() => handleSelectLang(lang.code)}
+                  onClick={handleConfirmLang}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: '10px',
+                    background: '#8b5cf6',
+                    color: '#fff',
+                    border: 'none',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                    cursor: 'pointer'
+                  }}
                 >
-                  {lang.label}
-                  {selectedLang === lang.code && <span className="lang-check">✓</span>}
+                  {t('language.confirm', 'Confirm')}
                 </button>
-              ))}
+              </div>
             </div>
           )}
         </div>
 
         <button className="welcome-artwork-cta welcome-artwork-start" type="button" onClick={onStart}>
-          <span className="welcome-artwork-cta-text">Get Started</span>
+          <span className="welcome-artwork-cta-text">{t('welcome.get_started', 'Get Started')}</span>
         </button>
         <button className="welcome-artwork-cta welcome-artwork-rakshak" type="button" onClick={onRakshak}>
-          <span className="welcome-artwork-cta-text">Become a Rakshak</span>
+          <span className="welcome-artwork-cta-text">{t('welcome.become_rakshak', 'Become a Rakshak')}</span>
         </button>
         <div className="welcome-footer-links" aria-label="Legal links">
-          <button type="button">Terms</button>
+          <button type="button">{t('auth.terms', 'Terms')}</button>
           <span>•</span>
-          <button type="button">Privacy Policy</button>
+          <button type="button">{t('auth.privacy', 'Privacy Policy')}</button>
         </div>
         <div className="welcome-artwork-hide-bar" aria-hidden="true" />
       </main>

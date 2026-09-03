@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, LockKeyhole, MapPin, ShieldCheck, X, Check } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BackHeader } from '../layout/BackHeader';
 import { RakshakApplication } from './RakshakApplication';
 
@@ -10,6 +11,7 @@ interface RakshakComplaintFormProps {
 }
 
 export const RakshakComplaintForm: React.FC<RakshakComplaintFormProps> = ({ close, submit, rakshaks }) => {
+  const { t } = useTranslation();
   const [rakshakId, setRakshakId] = useState(String(rakshaks[0]?.id || '1'));
   const [description, setDescription] = useState('');
 
@@ -85,6 +87,7 @@ import { useEffect, useMemo, useRef } from 'react';
 // ... (keep RakshakComplaintForm as is)
 
 export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplaint, userId, rakshaks }) => {
+  const { t } = useTranslation();
   const [apply, setApply] = useState(false);
   const [complaint, setComplaint] = useState(false);
   const [editArea, setEditArea] = useState(false);
@@ -269,25 +272,25 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
               <ShieldCheck size={16} color="#0f172a" />
             </span>
             <h2 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.2 }}>
-              Your trusted local safety network
+              {t('rakshak.trust_network', 'Your trusted local safety network')}
             </h2>
           </div>
           <p style={{ fontSize: '11px', letterSpacing: '-0.2px', color: '#64748b', lineHeight: 1.3, margin: 0 }}>
-            Verified volunteers who can be alerted in an emergency — never asked to intervene beyond their training.
+            {t('rakshak.volunteers_desc', 'Verified volunteers who can be alerted in an emergency — never asked to intervene beyond their training.')}
           </p>
           <button className="primary" onClick={() => setApply(true)} style={{ marginTop: '2px', width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px' }}>
-            Become a Rakshak →
+            {t('rakshak.become', 'Become a Rakshak →')}
           </button>
         </div>
       )}
 
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 0, margin: '16px 0' }}>
-        <h2>Meet the Rakshaks</h2>
+        <h2>{t('rakshak.meet', 'Meet the Rakshaks')}</h2>
         <button 
           onClick={() => setShowAll(!showAll)} 
           style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', padding: 0 }}
         >
-          {showAll ? 'Show nearest' : 'Show all'}
+          {showAll ? t('rakshak.show_nearest', 'Show nearest') : t('home.see_all', 'Show all')}
         </button>
       </div>
 
@@ -296,7 +299,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
           <MapPin size={18} style={{ marginRight: '8px' }} />
           <input 
             type="text" 
-            placeholder="Search by name or location..." 
+            placeholder={t('rakshak.search_placeholder', 'Search by name or location...')} 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ background: 'none', border: 'none', outline: 'none', width: '100%', fontSize: '14px', color: '#0f172a' }}
@@ -323,7 +326,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <b style={{ fontSize: '15px', color: '#0f172a', margin: 0 }}>{helper.name}</b>
                   <span style={{ fontSize: '10px', color: '#16a34a', background: '#f0fdf4', padding: '2px 6px', borderRadius: '8px', border: '1px solid #bbf7d0', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    Verified <Check size={10} strokeWidth={3} />
+                    {t('rakshak.verified', 'Verified')} <Check size={10} strokeWidth={3} />
                   </span>
                 </div>
 
@@ -346,19 +349,19 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
               onClick={() => handleRequestHelp(helper)}
               style={{ marginTop: '12px', width: '100%', padding: '10px', borderRadius: '12px', background: '#8b5cf6', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '13px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(139, 92, 246, 0.25)' }}
             >
-              Request Help
+              {t('rakshak.request_help', 'Request Help')}
             </button>
             
           </div>
         ))}
         {sortedRakshaks.length === 0 && (
-          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>No Rakshaks found.</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>{t('rakshak.no_rakshaks', 'No Rakshaks found.')}</p>
         )}
       </div>
 
       <div style={{ marginTop: 'auto', paddingBottom: '0px' }}>
         <button className="complaint-action" onClick={() => setComplaint(true)}>
-          <AlertTriangle size={16} /> Report a concern about a Rakshak
+          <AlertTriangle size={16} /> {t('rakshak.report_concern', 'Report a concern about a Rakshak')}
         </button>
       </div>
 

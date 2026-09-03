@@ -11,6 +11,7 @@ import {
   Search,
   Shield,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { BackHeader } from '../layout/BackHeader';
 import { SectionTitle } from '../common/SectionTitle';
 
@@ -112,6 +113,7 @@ const IconByType: React.FC<{ type: string; size?: number }> = ({ type, size = 18
 const FILTERS = ['All', 'Police', 'Hospital', 'Fuel Station', 'Cafe'];
 
 export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
+  const { t } = useTranslation();
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<L.Map | null>(null);
   const userMarker = useRef<L.Marker | null>(null);
@@ -249,7 +251,7 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
   return (
     <section className="screen map-screen" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <BackHeader
-        title="Safe places near you"
+        title={t('map.safe_places_near_you', 'Safe places near you')}
         nav={nav}
         extra={
           <button
@@ -258,7 +260,7 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
             disabled={loading}
           >
             <RotateCcw size={14} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
-            {loading ? 'Loading…' : 'Refresh'}
+            {loading ? t('map.loading', 'Loading…') : t('map.refresh', 'Refresh')}
           </button>
         }
       />
@@ -266,14 +268,14 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
       {/* Search */}
       <div className="search">
         <Search size={18} />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search nearby places…" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('map.search_placeholder', 'Search nearby places…')} />
       </div>
 
       {/* Filter tabs — instant, no network call */}
       <div className="filters" style={{ overflowX: 'auto', flexShrink: 0 }}>
         {FILTERS.map((item) => (
           <button className={filter === item ? 'selected' : ''} key={item} onClick={() => setFilter(item)}>
-            {item !== 'All' && <IconByType type={item} size={14} />} {item}
+            {item !== 'All' && <IconByType type={item} size={14} />} {item === 'All' ? t('map.filter_all', 'All') : item === 'Police' ? t('map.filter_police', 'Police') : item === 'Hospital' ? t('map.filter_hospital', 'Hospital') : item === 'Fuel Station' ? t('map.filter_fuel', 'Fuel Station') : item}
           </button>
         ))}
       </div>
@@ -284,7 +286,7 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
         {loading && (
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.65)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000, gap: '8px' }}>
             <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#6255ec' }} />
-            <span style={{ fontSize: '11px', color: '#6255ec', fontWeight: 600 }}>Fetching nearby places…</span>
+            <span style={{ fontSize: '11px', color: '#6255ec', fontWeight: 600 }}>{t('map.fetching', 'Fetching nearby places…')}</span>
           </div>
         )}
       </div>
@@ -294,14 +296,14 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
         <div style={{ margin: '0 0 8px', padding: '10px 14px', background: '#fff1f2', borderRadius: '10px', color: '#dc2626', fontSize: '12px', fontWeight: 600 }}>
           {locError}
           <button onClick={() => locateUser(true)} style={{ display: 'block', marginTop: '6px', color: '#6255ec', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>
-            Try again
+            {t('map.try_again', 'Try again')}
           </button>
         </div>
       )}
 
       {/* Places list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
-        <SectionTitle title={`Nearby safe places${allPlaces.length > 0 ? ` (${visiblePlaces.length})` : ''}`} />
+        <SectionTitle title={`${t('map.nearby_safe_places', 'Nearby safe places')}${allPlaces.length > 0 ? ` (${visiblePlaces.length})` : ''}`} />
         <div className="places-list">
           {visiblePlaces.map((place) => (
             <div className="place-row" key={place.id} style={{ cursor: 'pointer' }} onClick={() => openInMaps(place)}>
@@ -310,13 +312,13 @@ export const MapPage: React.FC<MapPageProps> = ({ nav }) => {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <b style={{ fontSize: '13px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{place.name}</b>
-                <small>{place.type} · {formatDist(place.distanceM)} away</small>
+                <small>{place.type === 'Police' ? t('map.filter_police', 'Police') : place.type === 'Hospital' ? t('map.filter_hospital', 'Hospital') : place.type === 'Fuel Station' ? t('map.filter_fuel', 'Fuel Station') : place.type} · {formatDist(place.distanceM)} {t('map.away', 'away')}</small>
               </div>
               <ExternalLink size={15} style={{ flexShrink: 0, color: 'var(--text-dim)' }} />
             </div>
           ))}
           {!loading && visiblePlaces.length === 0 && !locError && (
-            <p className="empty-state">{userPos ? 'No places found. Try a different filter.' : 'Waiting for your location…'}</p>
+            <p className="empty-state">{userPos ? t('map.no_places', 'No places found. Try a different filter.') : t('map.waiting_location', 'Waiting for your location…')}</p>
           )}
         </div>
       </div>

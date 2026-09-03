@@ -24,13 +24,26 @@ const languages = [
 ];
 
 export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ isOpen, onClose }) => {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [tempLang, setTempLang] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) setTempLang(null);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const currentLang = tempLang || i18n.language || 'en';
+
   const handleSelect = (code: string) => {
-    i18n.changeLanguage(code);
-    localStorage.setItem('language', code);
+    setTempLang(code);
+  };
+
+  const handleConfirm = () => {
+    if (tempLang) {
+      i18n.changeLanguage(tempLang);
+      localStorage.setItem('language', tempLang);
+    }
     onClose();
   };
 
@@ -40,8 +53,9 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ isOpen, onCl
         position: 'fixed',
         inset: 0,
         background: 'rgba(0,0,0,0.5)',
-        display: 'grid',
-        placeItems: 'center',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         zIndex: 999,
       }}
       onClick={onClose}
@@ -50,18 +64,29 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ isOpen, onCl
         style={{
           background: 'var(--bg-app)',
           borderRadius: '16px',
-          padding: '20px',
+          padding: '20px 20px 24px',
           width: '90%',
           maxWidth: '340px',
-          maxHeight: '70vh',
-          overflowY: 'auto',
+          maxHeight: '80vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.1)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 style={{ margin: '0 0 16px', fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
-          Select Language
+        <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
+          {t('language.select', 'Select Language')}
         </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          gap: '8px',
+          overflowY: 'auto',
+          paddingRight: '4px',
+          flex: 1,
+          minHeight: 0
+        }}>
           {languages.map((lang) => (
             <button
               key={lang.code}
@@ -70,21 +95,42 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({ isOpen, onCl
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '12px 14px',
-                background: i18n.language === lang.code ? 'var(--bg-elevated)' : 'transparent',
+                padding: '12px 16px',
+                background: currentLang === lang.code ? 'var(--bg-elevated)' : 'transparent',
                 border: '1px solid',
-                borderColor: i18n.language === lang.code ? 'var(--border-strong)' : 'transparent',
-                borderRadius: '10px',
-                fontSize: '14px',
+                borderColor: currentLang === lang.code ? 'var(--border-strong)' : 'var(--border)',
+                borderRadius: '12px',
+                fontSize: '15px',
                 color: 'var(--text-primary)',
                 cursor: 'pointer',
-                fontWeight: i18n.language === lang.code ? 600 : 400,
+                fontWeight: currentLang === lang.code ? 600 : 400,
+                transition: 'all 0.2s ease',
               }}
             >
               {lang.label}
-              {i18n.language === lang.code && <span>✓</span>}
+              {currentLang === lang.code && <span style={{ color: '#6255ec' }}>✓</span>}
             </button>
           ))}
+        </div>
+
+        <div style={{ marginTop: '20px', display: 'flex', flexShrink: 0, minHeight: '48px' }}>
+          <button 
+            onClick={handleConfirm}
+            style={{ 
+              flex: 1, 
+              padding: '12px', 
+              borderRadius: '12px', 
+              background: '#6255ec', 
+              border: 'none', 
+              color: '#fff',
+              fontWeight: 600,
+              fontSize: '15px',
+              cursor: 'pointer',
+              boxShadow: '0 4px 10px rgba(98, 85, 236, 0.3)'
+            }}
+          >
+            {t('language.confirm', 'Confirm')}
+          </button>
         </div>
       </div>
     </div>

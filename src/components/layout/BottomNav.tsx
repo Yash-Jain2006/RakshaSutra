@@ -1,6 +1,8 @@
 import React from 'react';
 import { Compass, Map as MapIcon, Settings, SlidersHorizontal, UsersRound, ArrowLeft } from 'lucide-react';
 
+import { useTranslation } from 'react-i18next';
+
 interface BottomNavProps {
   page: string;
   nav: (page: string) => void;
@@ -8,11 +10,13 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ page, nav, isAdmin }) => {
+  const { t } = useTranslation();
+  
   const items: [string, React.ElementType, string][] = [
-    ['home', Compass, 'Home'],
-    ['map', MapIcon, 'Map'],
-    ['rakshak', UsersRound, 'Rakshaks'],
-    ['settings', Settings, 'Settings'],
+    ['home', Compass, t('nav.home', 'Home')],
+    ['map', MapIcon, t('nav.map', 'Map')],
+    ['rakshak', UsersRound, t('nav.rakshaks', 'Rakshaks')],
+    ['settings', Settings, t('nav.settings', 'Settings')],
   ];
 
   return (
