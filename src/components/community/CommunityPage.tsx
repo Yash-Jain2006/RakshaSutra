@@ -12,7 +12,6 @@ interface CommunityPageProps {
 
 export const CommunityPage: React.FC<CommunityPageProps> = ({ nav }) => {
   const [composer, setComposer] = useState(false);
-  const [tab, setTab] = useState<'Feed' | 'Ratings'>('Feed');
   const [guidelines, setGuidelines] = useState(false);
   const [reports, setReports] = useState<any[]>([]);
 
@@ -85,23 +84,7 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({ nav }) => {
         <FileText size={16} /> Community reporting guidelines <ChevronRight size={16} />
       </button>
 
-      <div className="tabs">
-        <button
-          className={tab === 'Feed' ? 'active' : ''}
-          onClick={() => setTab('Feed')}
-        >
-          Report feed
-        </button>
-        <button
-          className={tab === 'Ratings' ? 'active' : ''}
-          onClick={() => setTab('Ratings')}
-        >
-          Area ratings
-        </button>
-      </div>
-
-      {tab === 'Feed' ? (
-        <div className="report-feed">
+      <div className="report-feed">
           {reports.map((report) => (
             <article className="report-card" key={report.id}>
               <div className="report-top">
@@ -127,35 +110,6 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({ nav }) => {
             </article>
           ))}
         </div>
-      ) : (
-        <div className="ratings">
-          <div className="rating-score">
-            <b>4.2</b>
-            <span>Community safety score</span>
-            <div>★★★★★</div>
-          </div>
-          <p>Rate your area to help other people choose safer routes.</p>
-          {[
-            ['Koramangala 5th Block', '4.5', 'Well-lit'],
-            ['HSR Layout Sector 1', '4.0', 'Mostly safe'],
-            ['Silk Board Underpass', '2.1', 'Needs attention'],
-          ].map(([name, score, note]) => (
-            <div className="rating-row" key={name}>
-              <span className={Number(score) < 3 ? 'red' : ''}>
-                <MapPin size={16} />
-              </span>
-              <div>
-                <b>{name}</b>
-                <small>{note}</small>
-              </div>
-              <strong>
-                {score}
-                <Star size={13} />
-              </strong>
-            </div>
-          ))}
-        </div>
-      )}
 
       {composer && (
         <ReportComposer close={() => setComposer(false)} submit={submitReport} />

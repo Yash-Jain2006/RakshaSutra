@@ -18,6 +18,7 @@ export interface Profile {
   account_status: AccountStatus;
   preferred_language: string;
   city?: string | null;
+  phone?: string | null;
   avatar_url?: string | null;
   created_at: string;
 }

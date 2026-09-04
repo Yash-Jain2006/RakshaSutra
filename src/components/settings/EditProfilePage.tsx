@@ -28,10 +28,27 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load saved phone from localStorage
+  // Load saved phone from database and fallback to localStorage
   useEffect(() => {
-    const savedPhone = localStorage.getItem('profile_phone') || '';
-    setPhone(savedPhone);
+    let active = true;
+    const fetchProfilePhone = async () => {
+      const savedPhone = localStorage.getItem('profile_phone') || '';
+      if (savedPhone) setPhone(savedPhone);
+
+      if (isSupabaseConfigured) {
+        try {
+          const prof = await getMyProfile();
+          if (active && prof.phone) {
+            setPhone(prof.phone);
+            localStorage.setItem('profile_phone', prof.phone);
+          }
+        } catch (e) {
+          console.error('Failed to load profile phone', e);
+        }
+      }
+    };
+    fetchProfilePhone();
+    return () => { active = false; };
   }, []);
 
   const initials = name
@@ -64,10 +81,11 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
     }
     setSaving(true);
     try {
+      const trimmedPhone = phone.trim();
       if (isSupabaseConfigured) {
-        await updateMyProfile(name.trim());
+        await updateMyProfile(name.trim(), trimmedPhone);
       }
-      localStorage.setItem('profile_phone', phone.trim());
+      localStorage.setItem('profile_phone', trimmedPhone);
       onProfileUpdated(name.trim());
       setSaved(true);
       notify('Profile updated successfully');
@@ -164,7 +182,7 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder=""
+            placeholder="+91 98765 43210"
             style={{
               width: '100%',
               padding: '8px 0',
@@ -177,6 +195,9 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
               outline: 'none',
             }}
           />
+          <span style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
+            Used for automated WhatsApp & SMS alerts, SOS notifications, and login.
+          </span>
         </div>
 
         {/* Email — read-only */}

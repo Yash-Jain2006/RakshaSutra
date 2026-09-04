@@ -25,17 +25,67 @@ function readPlatformKey(keysVariable: string, legacyVariable: string) {
   return Deno.env.get(legacyVariable) ?? ''
 }
 
+async function sendMetaWhatsAppMessage(phoneE164: string, message: string) {
+  const accessToken = Deno.env.get('META_WA_ACCESS_TOKEN')
+  const phoneNumberId = Deno.env.get('META_WA_PHONE_NUMBER_ID')
+
+  if (!accessToken || !phoneNumberId) {
+    return false
+  }
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanNumber,
+        type: 'text',
+        text: { preview_url: true, body: message },
+      }),
+    })
+    return res.ok
+  } catch (e) {
+    console.error('Meta WhatsApp send error:', e)
+    return false
+  }
+}
+
+async function sendMsg91Sms(phoneE164: string, message: string) {
+  const authKey = Deno.env.get('MSG91_AUTH_KEY')
+  const senderId = Deno.env.get('MSG91_SENDER_ID') || 'RAKSHA'
+
+  if (!authKey) return false
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const url = `https://control.msg91.com/api/v5/flow/?authkey=${authKey}&mobiles=${cleanNumber}&message=${encodeURIComponent(message)}&sender=${senderId}&route=4`
+    const res = await fetch(url, { method: 'POST' })
+    return res.ok
+  } catch (e) {
+    console.error('MSG91 send error:', e)
+    return false
+  }
+}
+
 async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
   const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
 
   if (!accountSid || !authToken || !fromPhone) {
-    console.warn('Twilio credentials not found.')
     return false
   }
 
-  // To fallback to SMS, we strip the 'whatsapp:' prefix if it exists
   const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
   const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
 
@@ -49,20 +99,12 @@ async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`
+        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
       },
-      body: formData.toString()
+      body: formData.toString(),
     })
-    
-    if (!res.ok) {
-      console.error(`Twilio send failed (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to ${phoneE164}:`, await res.text())
-      return false
-    } else {
-      console.log(`Twilio sent successfully (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to ${phoneE164}`)
-      return true
-    }
+    return res.ok
   } catch (e) {
-    console.error(`Twilio network error (${useWhatsApp ? 'WhatsApp' : 'SMS'}):`, e)
     return false
   }
 }
@@ -123,12 +165,17 @@ Deno.serve(async (request: Request) => {
       for (const contact of contacts) {
         if (!contact.phone_e164) continue;
         
-        // Try WhatsApp first
-        const whatsappSuccess = await sendTwilioMessage(contact.phone_e164, message, true)
+        // 1. Try Meta WhatsApp Cloud API first
+        let sent = await sendMetaWhatsAppMessage(contact.phone_e164, message)
         
-        // SMS Fallback
-        if (!whatsappSuccess) {
-          console.log(`WhatsApp failed for ${contact.phone_e164}. Attempting SMS fallback...`)
+        // 2. Fallback to MSG91 Indian SMS
+        if (!sent) {
+          console.log(`[Share Location] WhatsApp not available for ${contact.phone_e164}. Attempting MSG91 SMS fallback...`)
+          sent = await sendMsg91Sms(contact.phone_e164, message)
+        }
+
+        // 3. Fallback to Twilio if configured
+        if (!sent) {
           await sendTwilioMessage(contact.phone_e164, message, false)
         }
       }

@@ -47,10 +47,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
     'Rakshaks',
     'SOS Logs',
     'Reports',
-    'Zones (P2)',
-    'Safe Places (P2)',
-    'Users (P2)',
-    'Supports (P2)',
+    'Safe Zones (P2)',
   ];
 
   const handleTabClick = (item: string) => {
@@ -134,6 +131,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
               <AlertTriangle size={18} />
               <b style={{ flex: 1, marginLeft: '8px' }}>Manage SOS Audit Logs</b>
               <small style={{ color: '#6c63f2', fontWeight: 700 }}>View Logs →</small>
+            </button>
+            <button className="setting-row" onClick={() => setActiveTab('Reports')} style={{ width: '100%', border: 'none', background: 'none', textAlign: 'left', padding: '10px 0' }}>
+              <FileText size={18} />
+              <b style={{ flex: 1, marginLeft: '8px' }}>Review Community Reports</b>
+              <small style={{ color: '#6c63f2', fontWeight: 700 }}>Review Queue →</small>
             </button>
           </div>
         </>

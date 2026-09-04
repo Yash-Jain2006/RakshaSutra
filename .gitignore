@@ -11,3 +11,4 @@ scratch/
 __pycache__/
 *.pyc
 task.md
+.vercel

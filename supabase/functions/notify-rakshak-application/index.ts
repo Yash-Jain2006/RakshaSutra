@@ -18,6 +18,54 @@ function readPlatformKey(keysVariable: string, legacyVariable: string) {
   return Deno.env.get(legacyVariable) ?? ''
 }
 
+async function sendMetaWhatsAppMessage(phoneE164: string, message: string) {
+  const accessToken = Deno.env.get('META_WA_ACCESS_TOKEN')
+  const phoneNumberId = Deno.env.get('META_WA_PHONE_NUMBER_ID')
+  if (!accessToken || !phoneNumberId) return false
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanNumber,
+        type: 'text',
+        text: { preview_url: true, body: message },
+      }),
+    })
+    return res.ok
+  } catch (e) {
+    console.error('Meta WhatsApp admin error:', e)
+    return false
+  }
+}
+
+async function sendMsg91Sms(phoneE164: string, message: string) {
+  const authKey = Deno.env.get('MSG91_AUTH_KEY')
+  const senderId = Deno.env.get('MSG91_SENDER_ID') || 'RAKSHA'
+  if (!authKey) return false
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const url = `https://control.msg91.com/api/v5/flow/?authkey=${authKey}&mobiles=${cleanNumber}&message=${encodeURIComponent(message)}&sender=${senderId}&route=4`
+    const res = await fetch(url, { method: 'POST' })
+    return res.ok
+  } catch (e) {
+    console.error('MSG91 admin error:', e)
+    return false
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -124,56 +172,27 @@ Deno.serve(async (request) => {
     emailSuccess = false;
   }
 
-  // Fallback to SMS if email fails and Admin has a phone number
-  if (!emailSuccess) {
-    const adminClient = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
-    const { data: admins } = await adminClient.from('profiles').select('id').eq('role', 'admin').limit(1)
+  // Dispatch alert to Admin's updated profile phone number via WhatsApp / SMS
+  const adminClient = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
+  const { data: adminProfiles } = await adminClient
+    .from('profiles')
+    .select('id, phone')
+    .eq('role', 'admin')
+
+  let adminPhone = adminProfiles?.find((p: any) => p.phone)?.phone || null
+  if (!adminPhone && adminProfiles && adminProfiles.length > 0) {
+    const { data: adminUser } = await adminClient.auth.admin.getUserById(adminProfiles[0].id).catch(() => ({ data: null }))
+    adminPhone = adminUser?.user?.phone || adminUser?.user?.user_metadata?.phone || null
+  }
+
+  if (adminPhone) {
+    const adminMsg = `🛡️ *NEW RAKSHAK APPLICATION*\n\nApplicant: *${applicantName}*\nCoverage Area: ${coverageArea || 'N/A'}\nDoc Type: ${docType || 'N/A'}\n\nReview now in Admin Panel: ${adminPanelUrl}`
     
-    let adminPhone: string | null = null;
-    if (admins && admins.length > 0) {
-      const { data: adminUser } = await adminClient.auth.admin.getUserById(admins[0].id)
-      if (adminUser?.user?.phone) {
-        adminPhone = adminUser.user.phone
-      }
-    }
-
-    if (adminPhone) {
-      console.log('Email failed, attempting SMS fallback to admin phone:', adminPhone)
-      const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
-      const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-      const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
-
-      if (accountSid && authToken && fromPhone) {
-        const message = `🛡️ New Rakshak Application received from ${applicantName}. Review in Admin Panel.`
-        const actualFromPhone = fromPhone.replace('whatsapp:', '')
-        
-        const formData = new URLSearchParams()
-        formData.append('To', adminPhone)
-        formData.append('From', actualFromPhone)
-        formData.append('Body', message)
-
-        try {
-          const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`
-            },
-            body: formData.toString()
-          })
-          if (!res.ok) {
-            console.error('Twilio SMS fallback failed:', await res.text())
-            return json({ error: 'Failed to send both email and SMS notification' }, 500)
-          }
-        } catch (e) {
-          console.error('Twilio network error:', e)
-          return json({ error: 'Failed to send both email and SMS notification' }, 500)
-        }
-      } else {
-        return json({ error: 'Failed to send email notification (No SMS fallback configured)' }, 500)
-      }
-    } else {
-      return json({ error: 'Failed to send email notification (Admin has no phone number)' }, 500)
+    // 1. Try Meta WhatsApp first
+    let waSuccess = await sendMetaWhatsAppMessage(adminPhone, adminMsg)
+    if (!waSuccess) {
+      console.log(`[notify-rakshak-application] WhatsApp not sent to admin (${adminPhone}), falling back to MSG91 SMS...`)
+      await sendMsg91Sms(adminPhone, adminMsg)
     }
   }
 

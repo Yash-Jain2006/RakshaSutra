@@ -56,13 +56,64 @@ async function sendConfirmationEmail({ to, contactName, ownerName, confirmationU
   }
 }
 
+async function sendMetaWhatsAppMessage(phoneE164: string, message: string) {
+  const accessToken = Deno.env.get('META_WA_ACCESS_TOKEN')
+  const phoneNumberId = Deno.env.get('META_WA_PHONE_NUMBER_ID')
+
+  if (!accessToken || !phoneNumberId) {
+    return false
+  }
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: cleanNumber,
+        type: 'text',
+        text: { preview_url: true, body: message },
+      }),
+    })
+    return res.ok
+  } catch (e) {
+    console.error('Meta WhatsApp send error:', e)
+    return false
+  }
+}
+
+async function sendMsg91Sms(phoneE164: string, message: string) {
+  const authKey = Deno.env.get('MSG91_AUTH_KEY')
+  const senderId = Deno.env.get('MSG91_SENDER_ID') || 'RAKSHA'
+
+  if (!authKey) return false
+
+  let cleanNumber = phoneE164.replace(/[^0-9]/g, '')
+  if (cleanNumber.length === 10) cleanNumber = `91${cleanNumber}`
+
+  try {
+    const url = `https://control.msg91.com/api/v5/flow/?authkey=${authKey}&mobiles=${cleanNumber}&message=${encodeURIComponent(message)}&sender=${senderId}&route=4`
+    const res = await fetch(url, { method: 'POST' })
+    return res.ok
+  } catch (e) {
+    console.error('MSG91 send error:', e)
+    return false
+  }
+}
+
 async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
   const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
   const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
 
   if (!accountSid || !authToken || !fromPhone) {
-    console.warn('Twilio credentials not found. Skipping to', phoneE164)
     return false
   }
 
@@ -79,20 +130,12 @@ async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`
+        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
       },
-      body: formData.toString()
+      body: formData.toString(),
     })
-    
-    if (!res.ok) {
-      console.error(`Twilio send failed (${useWhatsApp ? 'WhatsApp' : 'SMS'}) with status:`, res.status, await res.text())
-      return false
-    } else {
-      console.log(`Twilio sent successfully (${useWhatsApp ? 'WhatsApp' : 'SMS'}) to`, phoneE164)
-      return true
-    }
+    return res.ok
   } catch (e) {
-    console.error(`Twilio send network error (${useWhatsApp ? 'WhatsApp' : 'SMS'}):`, e)
     return false
   }
 }
@@ -159,25 +202,31 @@ Deno.serve(async (request) => {
     const confirmationUrl = `${supabaseUrl}/functions/v1/confirm-emergency-contact?token=${token}`
     const ownerNameStr = profile.display_name || 'A Raksha Sutra user'
     let anySuccess = false;
-    let twilioSuccess = false;
+    let phoneSuccess = false;
     
     if (phone) {
       const message = `${ownerNameStr} added you as an emergency contact on Raksha Sutra. Confirm here: ${confirmationUrl}`
-      let success = await sendTwilioMessage(phone, message, true)
+      let success = await sendMetaWhatsAppMessage(phone, message)
       if (!success) {
-        console.log(`WhatsApp failed for ${phone}, trying SMS...`)
+        console.log(`[Emergency Contact] WhatsApp not sent for ${phone}, trying MSG91 SMS...`)
+        success = await sendMsg91Sms(phone, message)
+      }
+      if (!success) {
         success = await sendTwilioMessage(phone, message, false)
       }
-      twilioSuccess = success
+      phoneSuccess = success
       if (success) anySuccess = true
     }
 
     if (email) {
       let emailSuccess = await sendConfirmationEmail({ to: email, contactName: name, ownerName: ownerNameStr, confirmationUrl })
-      if (!emailSuccess && phone && !twilioSuccess) {
+      if (!emailSuccess && phone && !phoneSuccess) {
         console.log(`Email failed for ${email}, trying SMS fallback...`)
         const message = `${ownerNameStr} added you as an emergency contact on Raksha Sutra. Confirm here: ${confirmationUrl}`
-        emailSuccess = await sendTwilioMessage(phone, message, false)
+        emailSuccess = await sendMsg91Sms(phone, message)
+        if (!emailSuccess) {
+          emailSuccess = await sendTwilioMessage(phone, message, false)
+        }
       }
       if (emailSuccess) anySuccess = true
     }

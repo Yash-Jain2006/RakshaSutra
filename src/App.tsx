@@ -39,7 +39,60 @@ import { PrivacyData } from './components/settings/PrivacyData';
 import { ActivityHistoryPage } from './components/settings/ActivityHistoryPage';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { NotFoundPage } from './components/layout/NotFoundPage';
+import { PublicTrackingPage } from './components/map/PublicTrackingPage';
 export function App() {
+  const [publicTrackingId] = useState<string | null>(() => {
+    const match = window.location.pathname.match(/^\/track\/([a-zA-Z0-9-]+)/);
+    return match ? match[1] : null;
+  });
+
+  const [dark, setDark] = useState(() => {
+    const explicit = localStorage.getItem('theme_preference');
+    if (explicit === 'dark') return true;
+    if (explicit === 'light') return false;
+    // Strictly default to Light Mode unless explicitly switched by user
+    return false;
+  });
+
+  // Dark Mode Sync
+  useEffect(() => {
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (dark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme_preference', 'dark');
+      localStorage.setItem('theme', 'dark');
+      if (metaTheme) metaTheme.setAttribute('content', '#0A0A0A');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme_preference', 'light');
+      localStorage.setItem('theme', 'light');
+      if (metaTheme) metaTheme.setAttribute('content', '#ffffff');
+    }
+  }, [dark]);
+
+  if (publicTrackingId) {
+    return (
+      <div className={dark ? 'app dark' : 'app'}>
+        <div className="desktop-shell">
+          <aside className="desktop-rail" aria-label="Desktop context rail">
+            <Brand />
+            <p>Live Location Tracking</p>
+          </aside>
+          <main className="phone" role="main">
+            <div className="statusbar" aria-hidden="true">
+              <span>9:41</span>
+              <span className="status-icons">
+                <span>▮▮▮</span>
+                <span>◒</span>
+              </span>
+            </div>
+            <PublicTrackingPage trackingId={publicTrackingId} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   const [started, setStarted] = useState(false);
   const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
   const [page, setPage] = useState('home');
@@ -55,11 +108,7 @@ export function App() {
   const [fakeCall, setFakeCall] = useState(false);
   const [locationState, setLocationState] = useState<'ready' | 'locating' | 'shared' | 'fallback'>('ready');
 
-  const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
+
   const [sosPressing, setSosPressing] = useState(false);
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { display_name?: string } } | null>(null);
@@ -78,16 +127,6 @@ export function App() {
 
   const isAdmin = user?.email === 'rakshaasutra@gmail.com';
 
-  // Dark Mode Sync
-  useEffect(() => {
-    if (dark) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [dark]);
 
   // Notifications Sync
   useEffect(() => {
@@ -301,7 +340,7 @@ export function App() {
       return;
     }
     
-    const trackingLink = `https://rakshasutra.in/track?session=${user.id}`;
+    const trackingLink = `${window.location.origin}/track/${user.id}`;
     
     try {
       await dispatchLocationShare(trackingLink);
@@ -349,7 +388,7 @@ export function App() {
         locationSource: location.source,
       });
       setActiveSosEventId(event.id);
-      const dispatchResult = await dispatchSos(event.id);
+      const dispatchResult = await dispatchSos(event.id, window.location.origin);
       if (dispatchResult?.deliveries) {
         setDeliveries(dispatchResult.deliveries as SosDelivery[]);
       }
@@ -608,7 +647,7 @@ export function App() {
               onResumeJourney={() => notify('Journey resumed — live tracking active.')}
               onEndJourney={() => {
                 setJourney(false);
-                const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
+                const trackingLink = `${window.location.origin}/track/${user?.id || 'demo'}`;
                 if (journeyDestination) {
                   dispatchJourney(journeyDestination, activeJourneyContactIds, trackingLink, 'arrived').catch(err => {
                     console.error("Failed to dispatch arrival notifications:", err);
@@ -746,7 +785,7 @@ export function App() {
             setJourney(true);
             setShowJourneySetup(false);
 
-            const trackingLink = `https://rakshasutra.in/track?session=${user?.id || 'demo'}`;
+            const trackingLink = `${window.location.origin}/track/${user?.id || 'demo'}`;
             
             dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
               console.error("Failed to dispatch journey emails:", err);

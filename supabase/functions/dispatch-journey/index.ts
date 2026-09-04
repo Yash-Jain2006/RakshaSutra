@@ -25,7 +25,7 @@ function readPlatformKey(keysVariable: string, legacyVariable: string) {
   return Deno.env.get(legacyVariable) ?? ''
 }
 
-async function sendEmailAlert(to: string, locationLink: string, userName: string, destination: string) {
+async function sendEmailAlert(to: string, locationLink: string, userName: string, destination: string, userEmail: string) {
   const apiKey = Deno.env.get('RESEND_API_KEY')
   const from = Deno.env.get('RESEND_FROM_EMAIL') ?? 'safety@rakshasutra.in'
   if (!apiKey) {
@@ -36,7 +36,7 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
   const html = `
     <div style="font-family: sans-serif; padding: 20px;">
       <h2 style="color: #22c55e;">LIVE JOURNEY TRACKING</h2>
-      <p><strong>${userName}</strong> has started a journey to <strong>${destination}</strong>.</p>
+      <p><strong>${userEmail} (${userName})</strong> has started a journey to <strong>${destination}</strong>.</p>
       <p>They have chosen to share their live location with you to ensure they reach their destination safely.</p>
       <a href="${locationLink}" style="display:inline-block; margin-top: 10px; padding:12px 24px; background:#22c55e; color:#fff; text-decoration:none; border-radius:6px; font-weight:bold;">Track Live Location</a>
     </div>
@@ -48,7 +48,7 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
       body: JSON.stringify({
         from,
         to,
-        subject: `📍 Journey Tracking: ${userName} is on the move`,
+        subject: `📍 Journey Tracking: ${userEmail} (${userName}) is on the move`,
         html,
       }),
     })
@@ -138,6 +138,7 @@ Deno.serve(async (request: Request) => {
     .single()
 
   const userName = profile?.display_name || 'A Raksha Sutra user'
+  const userEmail = user.email || ''
 
   // We use the service role key to securely fetch the contacts that match the provided IDs
   // AND belong to this user
@@ -185,7 +186,7 @@ Deno.serve(async (request: Request) => {
         // Send email only when journey starts
         if (contact.email && status === 'started') {
           promises.push((async () => {
-            let success = await sendEmailAlert(contact.email, trackingLink, userName, destination)
+            let success = await sendEmailAlert(contact.email, trackingLink, userName, destination, userEmail)
             if (!success && contact.phone_e164) {
               const twilioSuccess = await twilioPromise
               if (!twilioSuccess) {

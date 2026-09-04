@@ -64,44 +64,70 @@ export const ManageSosLogs: React.FC = () => {
     if (!window.confirm('Are you sure you want to clear ALL SOS logs in the database? This cannot be undone.')) return;
     
     setLoading(true);
-    
-    // Delete child rows first to satisfy foreign key constraints
-    await configuredClient().from('sos_event_updates').delete().not('id', 'is', null);
-    await configuredClient().from('sos_event_deliveries').delete().not('id', 'is', null);
-
-    // Delete all rows by using a filter that matches everything
-    const { error } = await configuredClient()
-      .from('sos_events')
-      .delete()
-      .not('id', 'is', null);
+    try {
+      // 1. Try secure RPC first
+      const { error: rpcError } = await configuredClient().rpc('clear_all_sos_events');
       
-    if (!error) {
-      setLogs([]);
-    } else {
-      console.error('Failed to clear all logs', error);
-      alert(`Failed to clear logs: ${error?.message || 'They may be tied to other records.'}`);
+      if (rpcError) {
+        console.warn('RPC clear_all_sos_events failed, attempting direct table delete:', rpcError);
+        // Fallback: Delete child rows first to satisfy foreign key constraints
+        await configuredClient().from('sos_event_updates').delete().not('id', 'is', null);
+        await configuredClient().from('sos_event_deliveries').delete().not('id', 'is', null);
+        await configuredClient().from('sos_live_locations').delete().not('id', 'is', null);
+        await configuredClient().from('sos_location_history').delete().not('id', 'is', null);
+
+        const { error: deleteError } = await configuredClient()
+          .from('sos_events')
+          .delete()
+          .not('id', 'is', null);
+          
+        if (deleteError) {
+          throw deleteError;
+        }
+      }
+
+      // Re-fetch from database to verify and update UI
+      await fetchLogs();
+    } catch (err: any) {
+      console.error('Failed to clear all logs:', err);
+      alert(`Failed to clear logs from database: ${err?.message || 'Permission denied or database error.'}`);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const deleteLog = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this log entry permanently?')) return;
+    if (!window.confirm('Delete this log entry permanently from the database?')) return;
     
-    // Delete child rows first to satisfy foreign key constraints
-    await configuredClient().from('sos_event_updates').delete().eq('sos_event_id', id);
-    await configuredClient().from('sos_event_deliveries').delete().eq('sos_event_id', id);
+    setLoading(true);
+    try {
+      // 1. Try secure RPC first
+      const { error: rpcError } = await configuredClient().rpc('delete_sos_event', { p_event_id: id });
 
-    const { error } = await configuredClient()
-      .from('sos_events')
-      .delete()
-      .eq('id', id);
-      
-    if (!error) {
-      setLogs(prev => prev.filter(log => log.id !== id));
-    } else {
-      console.error('Failed to delete log', error);
-      alert(`Failed to delete log: ${error?.message || 'It may be tied to other records.'}`);
+      if (rpcError) {
+        console.warn('RPC delete_sos_event failed, attempting direct table delete:', rpcError);
+        // Fallback: Delete child rows first to satisfy foreign key constraints
+        await configuredClient().from('sos_event_updates').delete().eq('sos_event_id', id);
+        await configuredClient().from('sos_event_deliveries').delete().eq('sos_event_id', id);
+        await configuredClient().from('sos_live_locations').delete().eq('sos_event_id', id);
+        await configuredClient().from('sos_location_history').delete().eq('sos_event_id', id);
+
+        const { error: deleteError } = await configuredClient()
+          .from('sos_events')
+          .delete()
+          .eq('id', id);
+          
+        if (deleteError) {
+          throw deleteError;
+        }
+      }
+
+      // Re-fetch from database to ensure UI matches database exactly
+      await fetchLogs();
+    } catch (err: any) {
+      console.error('Failed to delete log:', err);
+      alert(`Failed to delete log from database: ${err?.message || 'Permission denied or database error.'}`);
+      setLoading(false);
     }
   };
 

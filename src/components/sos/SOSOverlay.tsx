@@ -74,10 +74,19 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
       }).catch(() => {});
     } catch(e) {}
 
+    let isCancelled = false;
+    let localStream: MediaStream | null = null;
+    let localMr: MediaRecorder | null = null;
+
     const shouldRecord = localStorage.getItem('auto_av_sos') === 'true';
     if (shouldRecord) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true })
         .then((s) => {
+          if (isCancelled) {
+            s.getTracks().forEach(t => t.stop());
+            return;
+          }
+          localStream = s;
           setStream(s);
           setPerms(prev => ({ ...prev, audio: true, video: true }));
 
@@ -87,6 +96,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
               ? 'video/mp4' 
               : 'video/webm';
             const mr = new MediaRecorder(s, { mimeType: preferredMime });
+            localMr = mr;
             mediaRecorderRef.current = mr;
             
             mr.ondataavailable = (e) => {
@@ -120,11 +130,12 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
     }
 
     return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
+      isCancelled = true;
+      if (localMr && localMr.state !== 'inactive') {
+        localMr.stop();
       }
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
       }
     };
   }, [facingMode]);

@@ -1,0 +1,33 @@
+# Sensitive Environment Secrets
+.env
+.env.*
+.env.local
+.env.production
+.env.example
+
+# Development, Agent & IDE Folders
+.agent/
+.playwright-cli/
+.vscode/
+scratch/
+output/
+tests/
+
+# Local Python & Database Scripts
+*.py
+*.sql
+supabase_schema_dump.sql
+schema.sql
+check_coords.js
+create_admin.js
+fix_coords.js
+debug.cjs
+extract.cjs
+generate_locales.cjs
+test-query.cjs
+test-query.mjs
+
+# Internal Documentation & Tasks
+task.md
+docs/
+README.md

@@ -149,11 +149,11 @@ export async function createSosEvent({
   return data;
 }
 
-export async function dispatchSos(eventId: string) {
+export async function dispatchSos(eventId: string, frontendUrl?: string) {
   const { data, error } = await configuredClient().functions.invoke(
     "dispatch-sos",
     {
-      body: { eventId },
+      body: { eventId, frontendUrl },
     },
   );
   if (error) throw error;
