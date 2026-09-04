@@ -2922,6 +2922,55 @@ html.dark,
   color: var(--accent-safe);
 }
 
+.toast-error svg {
+  color: #f87171;
+}
+
+/* Global checkbox — show a tick, not a filled square */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border: 2px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--accent, #6255ec);
+  background: #fff;
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  display: block;
+  width: 5px;
+  height: 9px;
+  border: 2px solid var(--accent, #6255ec);
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.dark input[type="checkbox"] {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.dark input[type="checkbox"]:checked {
+  background: #1e293b;
+  border-color: var(--accent, #6255ec);
+}
+
 /* ══════════════════════════════════════════════════════
    WELCOME PAGE — Airy Lavender + White Theme
    Reference: white→lavender bg, glowing purple orbit,

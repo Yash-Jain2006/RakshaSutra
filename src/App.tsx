@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, Phone, ShieldCheck, UsersRound } from 'lucide-react';
+import { Check, Phone, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { initialContacts } from './data.ts';
 
 import { getCurrentSession, onAuthStateChange, signOut } from './services/authService.ts';
+import { supabase } from './lib/supabase';
 import {
   createEmergencyContact,
   createSosEvent,
@@ -38,8 +39,6 @@ import { PrivacyData } from './components/settings/PrivacyData';
 import { ActivityHistoryPage } from './components/settings/ActivityHistoryPage';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { NotFoundPage } from './components/layout/NotFoundPage';
-
-
 export function App() {
   const [started, setStarted] = useState(false);
   const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
@@ -183,12 +182,28 @@ export function App() {
     let mounted = true;
 
     getCurrentSession()
-      .then((session) => {
+      .then(async (session) => {
         if (!mounted) return;
-        setUser(session?.user ? { id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata } : null);
-        setAuthStatus(session ? 'signed-in' : 'signed-out');
-        if (session?.user?.email === 'rakshaasutra@gmail.com') {
-          setPage('admin');
+        if (session?.user) {
+          // Verify user still exists server-side (handles deleted users with cached JWT)
+          try {
+            if (supabase) {
+              const { error } = await supabase.auth.getUser();
+              if (error && (error.status === 403 || error.status === 401)) {
+                await signOut();
+                if (mounted) setAuthStatus('signed-out');
+                return;
+              }
+            }
+          } catch { /* silently ignore check failures */ }
+          setUser({ id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata });
+          setAuthStatus('signed-in');
+          if (session.user.email === 'rakshaasutra@gmail.com') {
+            setPage('admin');
+          }
+        } else {
+          setUser(null);
+          setAuthStatus('signed-out');
         }
       })
       .catch(() => mounted && setAuthStatus('signed-out'));
@@ -531,11 +546,25 @@ export function App() {
 
   if (entryScreen === 'rakshak') {
     return (
-      <RakshakApplication
-        close={() => setEntryScreen('welcome')}
-        finish={() => setEntryScreen('auth')}
-        userId={user?.id}
-      />
+      <div className="app">
+        <div className="desktop-shell">
+          <aside className="desktop-rail" aria-label="Desktop context rail">
+            <Brand />
+            <p>Personal safety, within reach.</p>
+          </aside>
+          <main className="phone" role="main">
+            <div className="statusbar" aria-hidden="true">
+              <span>9:41</span>
+              <span className="status-icons"><span>▮▮▮</span><span>◒</span></span>
+            </div>
+            <RakshakApplication
+              close={() => setEntryScreen('welcome')}
+              finish={() => setEntryScreen('auth')}
+              userId={user?.id}
+            />
+          </main>
+        </div>
+      </div>
     );
   }
 
@@ -655,6 +684,10 @@ export function App() {
             />
           )}
 
+          {page === 'rakshak-apply' && (
+            <RakshakApplication close={() => nav('rakshak')} finish={() => nav('rakshak')} userId={user?.id} nav={nav} notify={notify} />
+          )}
+
           {page === 'activity-history' && (
             <ActivityHistoryPage nav={nav} userId={user?.id} />
           )}
@@ -684,9 +717,9 @@ export function App() {
       </div>
 
       {toast && (
-        <div className="toast" role="status" aria-live="polite">
-          <Check size={16} />
-          {toast}
+        <div className={`toast${toast.startsWith('❌') ? ' toast-error' : ''}`} role="status" aria-live="polite">
+          {toast.startsWith('❌') ? <X size={16} /> : <Check size={16} />}
+          {toast.startsWith('❌') ? toast.slice(2).trim() : toast}
         </div>
       )}
 

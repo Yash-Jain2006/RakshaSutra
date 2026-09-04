@@ -278,7 +278,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
           <p style={{ fontSize: '11px', letterSpacing: '-0.2px', color: '#64748b', lineHeight: 1.3, margin: 0 }}>
             {t('rakshak.volunteers_desc', 'Verified volunteers who can be alerted in an emergency — never asked to intervene beyond their training.')}
           </p>
-          <button className="primary" onClick={() => setApply(true)} style={{ marginTop: '2px', width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px' }}>
+          <button className="primary" onClick={() => nav('rakshak-apply')} style={{ marginTop: '2px', width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px' }}>
             {t('rakshak.become', 'Become a Rakshak →')}
           </button>
         </div>
@@ -453,16 +453,6 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
         </div>
       )}
 
-      {apply && (
-        <RakshakApplication
-          userId={userId}
-          close={() => setApply(false)}
-          finish={() => {
-            setApply(false);
-            notify('Application submitted for admin review.');
-          }}
-        />
-      )}
 
       {complaint && (
         <RakshakComplaintForm
