@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Save, GripVertical, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { Plus, Trash2, Save, GripVertical, Eye, EyeOff, Upload, Image as ImageIcon, Loader2, Link as LinkIcon } from 'lucide-react';
+import { configuredClient } from '../../services/safetyService';
 
 interface AdItem {
   id?: string;
   title: string;
   description: string;
   icon_emoji: string;
+  image_url: string;
   is_active: boolean;
   sort_order: number;
 }
@@ -15,28 +16,111 @@ interface ManageAdsProps {
   notify: (msg: string) => void;
 }
 
+/**
+ * Resilient image processor & uploader.
+ * Resizes and compresses image on client-side canvas.
+ * Attempts upload to Supabase Storage 'ad-images' bucket;
+ * seamlessly falls back to base64 DataURL if storage is unavailable.
+ */
+async function processAndUploadImage(file: File, client: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read image file.'));
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error('Invalid image file format.'));
+      img.onload = async () => {
+        try {
+          const MAX_DIM = 800;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > MAX_DIM) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else if (height > MAX_DIM) {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+          }
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+          // Try uploading to Supabase Storage bucket
+          if (client && client.storage) {
+            try {
+              const res = await fetch(dataUrl);
+              const blob = await res.blob();
+              const fileName = `ad_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.jpg`;
+
+              const { data: uploadData, error: uploadErr } = await client.storage
+                .from('ad-images')
+                .upload(fileName, blob, { contentType: 'image/jpeg', upsert: true });
+
+              if (!uploadErr && uploadData) {
+                const { data: pubData } = client.storage.from('ad-images').getPublicUrl(fileName);
+                if (pubData?.publicUrl) {
+                  resolve(pubData.publicUrl);
+                  return;
+                }
+              } else if (uploadErr) {
+                console.warn('Storage upload error, using compressed data URL:', uploadErr);
+              }
+            } catch (storageErr) {
+              console.warn('Storage upload exception, using compressed data URL:', storageErr);
+            }
+          }
+
+          // Fallback to data URL
+          resolve(dataUrl);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
   const [ads, setAds] = useState<AdItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [showUrlInputs, setShowUrlInputs] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     loadAds();
   }, []);
 
   const loadAds = async () => {
-    if (!supabase) return;
+    const client = configuredClient();
+    if (!client) return;
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('advertisements')
-      .select('id, title, description, icon_emoji, is_active, sort_order')
+      .select('id, title, description, icon_emoji, image_url, is_active, sort_order')
       .order('sort_order', { ascending: true });
 
     if (error) {
       console.error('Error loading ads:', error);
       notify('Failed to load ads.');
     } else {
-      setAds(data || []);
+      setAds(
+        (data || []).map((ad) => ({
+          ...ad,
+          image_url: ad.image_url || '',
+          icon_emoji: ad.icon_emoji || '🛒',
+        }))
+      );
     }
     setLoading(false);
   };
@@ -52,6 +136,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
         title: '',
         description: '',
         icon_emoji: '🛒',
+        image_url: '',
         is_active: true,
         sort_order: prev.length,
       },
@@ -62,10 +147,35 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
     setAds((prev) => prev.map((ad, i) => (i === index ? { ...ad, [field]: value } : ad)));
   };
 
+  const handleImageFileChange = async (index: number, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Please select a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      notify('Image must be under 10MB.');
+      return;
+    }
+
+    const client = configuredClient();
+    setUploadingIndex(index);
+    try {
+      const url = await processAndUploadImage(file, client);
+      updateAd(index, 'image_url', url);
+      notify('Product image uploaded successfully!');
+    } catch (err: any) {
+      console.error('Image processing error:', err);
+      notify(`Image upload failed: ${err.message || 'Unknown error'}`);
+    } finally {
+      setUploadingIndex(null);
+    }
+  };
+
   const removeAd = async (index: number) => {
+    const client = configuredClient();
     const ad = ads[index];
-    if (ad.id && supabase) {
-      const { error } = await supabase.from('advertisements').delete().eq('id', ad.id);
+    if (ad.id && client) {
+      const { error } = await client.from('advertisements').delete().eq('id', ad.id);
       if (error) {
         notify('Failed to delete ad.');
         return;
@@ -76,7 +186,8 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
   };
 
   const saveAll = async () => {
-    if (!supabase) return;
+    const client = configuredClient();
+    if (!client) return;
     setSaving(true);
 
     try {
@@ -92,16 +203,16 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
           title: ad.title.trim(),
           description: ad.description.trim(),
           icon_emoji: ad.icon_emoji || '🛒',
+          image_url: ad.image_url ? ad.image_url.trim() : '',
           is_active: ad.is_active,
           sort_order: i,
-          image_url: '',
         };
 
         if (ad.id) {
-          const { error } = await supabase.from('advertisements').update(payload).eq('id', ad.id);
+          const { error } = await client.from('advertisements').update(payload).eq('id', ad.id);
           if (error) throw error;
         } else {
-          const { data, error } = await supabase.from('advertisements').insert(payload).select('id').single();
+          const { data, error } = await client.from('advertisements').insert(payload).select('id').single();
           if (error) throw error;
           ads[i].id = data.id;
         }
@@ -115,8 +226,6 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
       setSaving(false);
     }
   };
-
-  const EMOJI_OPTIONS = ['🛒', '👟', '🛡️', '💊', '📱', '🏠', '🚕', '☕', '🎓', '💪', '🌸', '🔒', '⚡', '🎯', '🏥', '🍎'];
 
   if (loading) {
     return (
@@ -134,7 +243,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
       </div>
 
       <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px' }}>
-        Ads appear as a scrolling banner on the Home screen. Maximum 5 ads.
+        Upload product images and headings. Ads appear as a scrolling banner on the Home screen. Maximum 5 ads.
       </p>
 
       {ads.length === 0 && (
@@ -143,7 +252,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {ads.map((ad, index) => (
           <div
             key={ad.id || `new-${index}`}
@@ -155,11 +264,13 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
               transition: 'all 0.2s',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            {/* Header: Ad # and Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
               <GripVertical size={14} color="#cbd5e1" />
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8' }}>AD #{index + 1}</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
                 <button
+                  type="button"
                   onClick={() => updateAd(index, 'is_active', !ad.is_active)}
                   title={ad.is_active ? 'Deactivate' : 'Activate'}
                   style={{
@@ -180,6 +291,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
                   {ad.is_active ? 'Active' : 'Hidden'}
                 </button>
                 <button
+                  type="button"
                   onClick={() => removeAd(index)}
                   title="Remove ad"
                   style={{
@@ -198,31 +310,237 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
               </div>
             </div>
 
-            {/* Icon Picker */}
-            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '6px' }}>
-              Icon
-            </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-              {EMOJI_OPTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => updateAd(index, 'icon_emoji', emoji)}
+            {/* Product Image Uploader (replaces Emoji Icons) */}
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>
+                  Product Ad Image
+                </label>
+                {ad.image_url && (
+                  <button
+                    type="button"
+                    onClick={() => updateAd(index, 'image_url', '')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#ef4444',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: 0,
+                    }}
+                  >
+                    <Trash2 size={11} /> Remove Image
+                  </button>
+                )}
+              </div>
+
+              {ad.image_url ? (
+                <div
                   style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '8px',
-                    border: ad.icon_emoji === emoji ? '2px solid #6c63f2' : '1px solid #e2e8f0',
-                    background: ad.icon_emoji === emoji ? '#f0eeff' : '#fff',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    display: 'grid',
-                    placeItems: 'center',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    padding: '10px 12px',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
                   }}
                 >
-                  {emoji}
-                </button>
-              ))}
+                  <div
+                    style={{
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      flexShrink: 0,
+                      display: 'grid',
+                      placeItems: 'center',
+                    }}
+                  >
+                    <img
+                      src={ad.image_url}
+                      alt="Product Ad"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: '12px', fontWeight: 600, color: '#1e293b' }}>
+                      Product Image Loaded
+                    </p>
+                    <p
+                      style={{
+                        margin: '2px 0 0',
+                        fontSize: '10px',
+                        color: '#94a3b8',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title={ad.image_url}
+                    >
+                      {ad.image_url.startsWith('data:') ? 'Compressed image ready' : ad.image_url}
+                    </p>
+                  </div>
+                  <label
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      color: '#475569',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      cursor: uploadingIndex === index ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {uploadingIndex === index ? (
+                      <Loader2 size={12} className="spin" color="#6c63f2" />
+                    ) : (
+                      <Upload size={12} />
+                    )}
+                    Replace
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingIndex === index}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFileChange(index, file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  <label
+                    style={{
+                      border: '2px dashed #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      background: '#f8fafc',
+                      cursor: uploadingIndex === index ? 'wait' : 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingIndex === index}
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleImageFileChange(index, file);
+                        e.target.value = '';
+                      }}
+                    />
+                    {uploadingIndex === index ? (
+                      <>
+                        <Loader2 size={24} color="#6c63f2" className="spin" />
+                        <span style={{ fontSize: '11px', color: '#6c63f2', fontWeight: 600 }}>
+                          Uploading and optimizing image…
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div
+                          style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '50%',
+                            background: '#ede9fe',
+                            display: 'grid',
+                            placeItems: 'center',
+                            color: '#6c63f2',
+                          }}
+                        >
+                          <Upload size={18} />
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#4338ca' }}>
+                            Click to upload product image
+                          </span>
+                          <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#94a3b8' }}>
+                            PNG, JPG, WebP up to 10MB
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </label>
+                </div>
+              )}
+
+              {/* Direct URL input option */}
+              {showUrlInputs[index] ? (
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+                  <input
+                    type="url"
+                    placeholder="https://example.com/product-image.jpg"
+                    value={ad.image_url}
+                    onChange={(e) => updateAd(index, 'image_url', e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                      fontSize: '11px',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlInputs((prev) => ({ ...prev, [index]: false }))}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'right', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlInputs((prev) => ({ ...prev, [index]: true }))}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#6c63f2',
+                      fontSize: '10px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      padding: 0,
+                    }}
+                  >
+                    <LinkIcon size={10} />
+                    {ad.image_url ? 'Edit Image URL directly' : 'Or enter Image URL directly'}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Heading */}
@@ -233,7 +551,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
               type="text"
               value={ad.title}
               onChange={(e) => updateAd(index, 'title', e.target.value)}
-              placeholder="e.g. SafeStep Shoes"
+              placeholder="e.g. Shopping"
               maxLength={40}
               style={{
                 width: '100%',
@@ -254,7 +572,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
               type="text"
               value={ad.description}
               onChange={(e) => updateAd(index, 'description', e.target.value)}
-              placeholder="e.g. Grip-tech footwear for city commutes"
+              placeholder="e.g. Everything at cheaper price"
               maxLength={80}
               style={{
                 width: '100%',
@@ -271,6 +589,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
         <button
+          type="button"
           onClick={addAd}
           disabled={ads.length >= 5}
           style={{
@@ -292,6 +611,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
           <Plus size={14} /> Add Ad
         </button>
         <button
+          type="button"
           onClick={saveAll}
           disabled={saving || ads.length === 0}
           style={{

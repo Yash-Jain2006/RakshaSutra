@@ -162,8 +162,8 @@ Deno.serve(async (request: Request) => {
   // Fire and forget sending to not block response
   const sendAlerts = async () => {
     try {
-      for (const contact of contacts) {
-        if (!contact.phone_e164) continue;
+      const promises = contacts.map(async (contact: any) => {
+        if (!contact.phone_e164) return;
         
         // 1. Try Meta WhatsApp Cloud API first
         let sent = await sendMetaWhatsAppMessage(contact.phone_e164, message)
@@ -178,13 +178,14 @@ Deno.serve(async (request: Request) => {
         if (!sent) {
           await sendTwilioMessage(contact.phone_e164, message, false)
         }
-      }
+      });
+      await Promise.allSettled(promises);
     } catch (e) {
       console.error('Fatal error in sendAlerts background worker:', e)
     }
   }
 
-  sendAlerts() // run asynchronously
+  await sendAlerts() // wait for completion
 
   return json({
     message: 'Location share dispatched successfully',

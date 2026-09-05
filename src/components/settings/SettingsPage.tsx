@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   MessageCircle,
   Moon,
+  Phone,
   Settings,
   ShieldCheck,
   UsersRound,
@@ -186,6 +187,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <span><Camera size={18} /></span>
           <b>{t('settings.auto_audio_video', 'Auto audio/video on SOS')}</b>
           <i className={`switch ${record ? 'on' : ''}`}><em /></i>
+        </button>
+
+        <button className="setting-row" onClick={() => nav('fake-call-config')}>
+          <span><Phone size={18} /></span>
+          <b>{t('settings.fake_call_config', 'Fake Call Setup')}</b>
+          <ChevronRight size={16} />
         </button>
       </div>
 

@@ -5,6 +5,7 @@ import { BackHeader } from '../layout/BackHeader';
 import { ManageRakshaks } from './ManageRakshaks';
 import { ManageSosLogs } from './ManageSosLogs';
 import { ManageReports } from './ManageReports';
+import { ManageAds } from './ManageAds';
 
 import { configuredClient } from '../../services/safetyService';
 
@@ -14,7 +15,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Reports' | 'Phase2Stub'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Reports' | 'Ads' | 'Phase2Stub'>('Overview');
   const [stubTitle, setStubTitle] = useState('');
   const [metrics, setMetrics] = useState({ sos: 0, rakshaks: 0, reports: 0, places: 0 });
 
@@ -47,11 +48,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
     'Rakshaks',
     'SOS Logs',
     'Reports',
+    'Ads',
     'Safe Zones (P2)',
   ];
 
   const handleTabClick = (item: string) => {
-    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs' || item === 'Reports') {
+    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs' || item === 'Reports' || item === 'Ads') {
       setActiveTab(item as any);
     } else {
       setStubTitle(item);
@@ -74,6 +76,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
             (activeTab === 'Rakshaks' && item === 'Rakshaks') ||
             (activeTab === 'SOS Logs' && item === 'SOS Logs') ||
             (activeTab === 'Reports' && item === 'Reports') ||
+            (activeTab === 'Ads' && item === 'Ads') ||
             (activeTab === 'Phase2Stub' && item === stubTitle);
 
           return (
@@ -120,7 +123,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
 
           <div className="admin-card">
             <div className="admin-card-title">
-              <h3>Phase 1 Action Queue</h3>
+              <h3>Action Queue</h3>
             </div>
             <button className="setting-row" onClick={() => setActiveTab('Rakshaks')} style={{ width: '100%', border: 'none', background: 'none', textAlign: 'left', padding: '10px 0' }}>
               <UserRound size={18} />
@@ -144,6 +147,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
       {activeTab === 'Rakshaks' && <ManageRakshaks notify={notify} />}
       {activeTab === 'SOS Logs' && <ManageSosLogs />}
       {activeTab === 'Reports' && <ManageReports notify={notify} />}
+      {activeTab === 'Ads' && <ManageAds notify={notify} />}
 
       {activeTab === 'Phase2Stub' && (
         <div className="admin-card coming-card" style={{ textAlign: 'center', padding: '32px 16px' }}>

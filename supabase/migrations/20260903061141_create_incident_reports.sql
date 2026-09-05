@@ -1,6 +1,11 @@
-create type public.incident_rating as enum ('Safe', 'Unsafe');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'incident_rating') THEN
+    CREATE TYPE public.incident_rating AS ENUM ('Safe', 'Unsafe');
+  END IF;
+END $$;
 
-create table public.incident_reports (
+CREATE TABLE IF NOT EXISTS public.incident_reports (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.profiles(id) on delete set null,
   place text not null,
@@ -12,38 +17,42 @@ create table public.incident_reports (
 );
 
 -- RLS Policies
-alter table public.incident_reports enable row level security;
+ALTER TABLE public.incident_reports ENABLE ROW LEVEL SECURITY;
 
 -- Users can create reports
-create policy "Users can insert incident reports"
-  on public.incident_reports for insert
-  to authenticated
-  with check (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can insert incident reports" ON public.incident_reports;
+CREATE POLICY "Users can insert incident reports"
+  ON public.incident_reports FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = user_id);
 
 -- Users can view their own reports
-create policy "Users can view own incident reports"
-  on public.incident_reports for select
-  to authenticated
-  using (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users can view own incident reports" ON public.incident_reports;
+CREATE POLICY "Users can view own incident reports"
+  ON public.incident_reports FOR SELECT
+  TO authenticated
+  USING (auth.uid() = user_id);
 
 -- Admins can view all reports
-create policy "Admins can view all incident reports"
-  on public.incident_reports for select
-  to authenticated
-  using (
-    exists (
-      select 1 from public.profiles
-      where profiles.id = auth.uid() and profiles.role = 'admin'
+DROP POLICY IF EXISTS "Admins can view all incident reports" ON public.incident_reports;
+CREATE POLICY "Admins can view all incident reports"
+  ON public.incident_reports FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
     )
   );
 
 -- Admins can update reports (e.g., status)
-create policy "Admins can update incident reports"
-  on public.incident_reports for update
-  to authenticated
-  using (
-    exists (
-      select 1 from public.profiles
-      where profiles.id = auth.uid() and profiles.role = 'admin'
+DROP POLICY IF EXISTS "Admins can update incident reports" ON public.incident_reports;
+CREATE POLICY "Admins can update incident reports"
+  ON public.incident_reports FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role = 'admin'
     )
   );

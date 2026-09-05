@@ -1,33 +1,36 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ChevronRight, ShieldCheck } from 'lucide-react';
 
 const LANGUAGES = [
-  { code: 'en',  label: 'English' },
-  { code: 'hi',  label: 'हिन्दी — Hindi' },
-  { code: 'bn',  label: 'বাংলা — Bengali' },
-  { code: 'ta',  label: 'தமிழ் — Tamil' },
-  { code: 'te',  label: 'తెలుగు — Telugu' },
-  { code: 'mr',  label: 'मराठी — Marathi' },
-  { code: 'gu',  label: 'ગુજરાતી — Gujarati' },
-  { code: 'kn',  label: 'ಕನ್ನಡ — Kannada' },
-  { code: 'ml',  label: 'മലയാളം — Malayalam' },
-  { code: 'pa',  label: 'ਪੰਜਾਬੀ — Punjabi' },
-  { code: 'or',  label: 'ଓଡ଼ିଆ — Odia' },
-  { code: 'ur',  label: 'اردو — Urdu' },
-  { code: 'ne',  label: 'नेपाली — Nepali' },
-  { code: 'sa',  label: 'संस्कृतम् — Sanskrit' },
-  { code: 'zh',  label: '中文 — Chinese' },
-  { code: 'fr',  label: 'Français — French' },
-  { code: 'de',  label: 'Deutsch — German' },
-  { code: 'ja',  label: '日本語 — Japanese' },
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिन्दी — Hindi' },
+  { code: 'bn', label: 'বাংলা — Bengali' },
+  { code: 'ta', label: 'தமிழ் — Tamil' },
+  { code: 'te', label: 'తెలుగు — Telugu' },
+  { code: 'mr', label: 'मराठी — Marathi' },
+  { code: 'gu', label: 'ગુજરાતી — Gujarati' },
+  { code: 'kn', label: 'ಕನ್ನಡ — Kannada' },
+  { code: 'ml', label: 'മലയാളം — Malayalam' },
+  { code: 'pa', label: 'ਪੰਜਾਬੀ — Punjabi' },
+  { code: 'or', label: 'ଓଡ଼ିଆ — Odia' },
+  { code: 'ur', label: 'اردو — Urdu' },
+  { code: 'ne', label: 'नेपाली — Nepali' },
+  { code: 'sa', label: 'संस्कृतम् — Sanskrit' },
+  { code: 'zh', label: '中文 — Chinese' },
+  { code: 'fr', label: 'Français — French' },
+  { code: 'de', label: 'Deutsch — German' },
+  { code: 'ja', label: '日本語 — Japanese' },
 ];
 
 interface WelcomeScreenProps {
   onStart: () => void;
   onRakshak: () => void;
+  onTerms: () => void;
+  onPrivacy: () => void;
 }
 
-export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak }) => {
+export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak, onTerms, onPrivacy }) => {
   const { t, i18n } = useTranslation();
   const [languageOpen, setLanguageOpen] = useState(false);
   const [tempLang, setTempLang] = useState<string | null>(null);
@@ -60,7 +63,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak
       <main className="welcome-artwork-frame" aria-label="Raksha Sutra welcome screen">
         <img
           className="welcome-artwork-image"
-          src="/welcome-reference.jpeg"
+          src="/welcome-new.png"
           alt="Raksha Sutra safety network illustration"
         />
 
@@ -114,16 +117,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak
           )}
         </div>
 
-        <button className="welcome-artwork-cta welcome-artwork-start" type="button" onClick={onStart}>
+        <button className="welcome-artwork-cta welcome-artwork-start" type="button" onClick={onStart} aria-label={t('welcome.get_started', 'Get Started')}>
           <span className="welcome-artwork-cta-text">{t('welcome.get_started', 'Get Started')}</span>
         </button>
-        <button className="welcome-artwork-cta welcome-artwork-rakshak" type="button" onClick={onRakshak}>
+        <button className="welcome-artwork-cta welcome-artwork-rakshak" type="button" onClick={onRakshak} aria-label={t('welcome.become_rakshak', 'Become a Rakshak')}>
           <span className="welcome-artwork-cta-text">{t('welcome.become_rakshak', 'Become a Rakshak')}</span>
         </button>
         <div className="welcome-footer-links" aria-label="Legal links">
-          <button type="button">{t('auth.terms', 'Terms')}</button>
+          <button type="button" onClick={onTerms}>{t('auth.terms', 'Terms')}</button>
           <span>•</span>
-          <button type="button">{t('auth.privacy', 'Privacy Policy')}</button>
+          <button type="button" onClick={onPrivacy}>{t('auth.privacy', 'Privacy Policy')}</button>
         </div>
         <div className="welcome-artwork-hide-bar" aria-hidden="true" />
       </main>

@@ -37,11 +37,17 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
   }
 
   const html = `
-    <div style="font-family: sans-serif; padding: 20px;">
-      <h2 style="color: #d93025;">EMERGENCY SOS ALERT</h2>
-      <p><strong>${userEmail} (${userName})</strong> has triggered an SOS and needs immediate assistance.</p>
-      <p>Click the link below to view their live location:</p>
-      <a href="${locationLink}" style="display:inline-block; padding:12px 24px; background:#d93025; color:#fff; text-decoration:none; border-radius:6px; font-weight:bold;">View Live Location</a>
+    <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <div style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
+        <img src="https://rakshasutra.in/logo.png" alt="Rakshasutra Logo" style="height: 80px; width: auto; margin-bottom: 10px;" />
+        <h1 style="color: #1e293b; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Rakshasutra</h1>
+      </div>
+      <h2 style="color: #d93025; margin-top: 0;">🚨 EMERGENCY SOS ALERT</h2>
+      <p style="font-size: 16px; color: #334155; line-height: 1.5;"><strong>${userEmail} (${userName})</strong> has triggered an SOS and needs immediate assistance.</p>
+      <p style="font-size: 16px; color: #334155; margin-bottom: 24px;">Click the button below to view their live location and track their movement in real-time:</p>
+      <div style="text-align: center;">
+        <a href="${locationLink}" style="display:inline-block; padding:14px 28px; background:#d93025; color:#fff; text-decoration:none; border-radius:8px; font-weight:bold; font-size: 16px; box-shadow: 0 4px 6px rgba(217, 48, 37, 0.2);">View Live Location</a>
+      </div>
     </div>
   `
   try {
@@ -517,7 +523,7 @@ Deno.serve(async (request: Request) => {
     }
   }
 
-  sendAlerts() // run asynchronously
+  await sendAlerts() // wait for completion
 
   await admin.from('sos_event_updates').insert({
     sos_event_id: event.id,

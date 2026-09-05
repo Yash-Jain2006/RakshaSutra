@@ -18,6 +18,7 @@ import {
   updateSosLocation,
 } from './services/safetyService.ts';
 import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } from './types/models';
+import { startLiveJourney, updateLiveJourney, updateLiveJourneyLocation, getCurrentJourney } from './services/journeyService';
 
 import { AdminPanel } from './components/admin/AdminPanel';
 import { AuthScreen, LoadingScreen } from './components/auth/AuthScreen';
@@ -33,6 +34,7 @@ import { RakshakPage } from './components/rakshak/RakshakPage';
 import { RakshakApplication } from './components/rakshak/RakshakApplication';
 import { EditProfilePage } from './components/settings/EditProfilePage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { FakeCallConfigPage } from './components/settings/FakeCallConfigPage';
 import { SOSOverlay } from './components/sos/SOSOverlay';
 import { SupportPage } from './components/support/SupportPage';
 import { PrivacyData } from './components/settings/PrivacyData';
@@ -40,6 +42,9 @@ import { ActivityHistoryPage } from './components/settings/ActivityHistoryPage';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { NotFoundPage } from './components/layout/NotFoundPage';
 import { PublicTrackingPage } from './components/map/PublicTrackingPage';
+import { TermsPage } from './components/legal/TermsPage';
+import { PrivacyPage } from './components/legal/PrivacyPage';
+
 export function App() {
   const [publicTrackingId] = useState<string | null>(() => {
     const match = window.location.pathname.match(/^\/track\/([a-zA-Z0-9-]+)/);
@@ -56,14 +61,15 @@ export function App() {
 
   // Dark Mode Sync
   useEffect(() => {
+    const root = document.documentElement;
     const metaTheme = document.querySelector('meta[name="theme-color"]');
     if (dark) {
-      document.documentElement.classList.add('dark');
+      root.classList.add('dark');
       localStorage.setItem('theme_preference', 'dark');
       localStorage.setItem('theme', 'dark');
-      if (metaTheme) metaTheme.setAttribute('content', '#0A0A0A');
+      if (metaTheme) metaTheme.setAttribute('content', '#0a0a0f');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark');
       localStorage.setItem('theme_preference', 'light');
       localStorage.setItem('theme', 'light');
       if (metaTheme) metaTheme.setAttribute('content', '#ffffff');
@@ -94,8 +100,10 @@ export function App() {
   }
 
   const [started, setStarted] = useState(false);
-  const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
+  const [entryScreen, setEntryScreen] = useState<'welcome' | 'auth' | 'rakshak' | 'terms' | 'privacy'>('welcome');
+  const [previousEntryScreen, setPreviousEntryScreen] = useState<'welcome' | 'auth' | 'rakshak'>('welcome');
   const [page, setPage] = useState('home');
+  const [previousPage, setPreviousPage] = useState('settings');
   const [contacts, setContacts] = useState<EmergencyContact[]>(initialContacts as EmergencyContact[]);
   const [rakshaks, setRakshaks] = useState<any[]>([]);
   const [journey, setJourney] = useState(false);
@@ -106,6 +114,9 @@ export function App() {
   const [sosTime, setSosTime] = useState(0);
   const [toast, setToast] = useState('');
   const [fakeCall, setFakeCall] = useState(false);
+  const [fakeCallName, setFakeCallName] = useState(() => localStorage.getItem('fakeCallName') || 'Meera Iyer');
+  const [fakeCallRelation, setFakeCallRelation] = useState(() => localStorage.getItem('fakeCallRelation') || 'Sister · mobile');
+  const [fakeCallRingtone, setFakeCallRingtone] = useState(() => localStorage.getItem('fakeCallRingtone') || 'default');
   const [locationState, setLocationState] = useState<'ready' | 'locating' | 'shared' | 'fallback'>('ready');
 
 
@@ -113,6 +124,7 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<'checking' | 'signed-in' | 'signed-out'>('checking');
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { display_name?: string } } | null>(null);
   const [activeSosEventId, setActiveSosEventId] = useState<string | null>(null);
+  const [activeJourneyId, setActiveJourneyId] = useState<string | null>(null);
   const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
   const [notifications, setNotifications] = useState(() => localStorage.getItem('notifications') !== 'false');
   const [record, setRecord] = useState(() => localStorage.getItem('record') === 'true');
@@ -126,6 +138,20 @@ export function App() {
   const [profileDisplayName, setProfileDisplayName] = useState('');
 
   const isAdmin = user?.email === 'rakshaasutra@gmail.com';
+
+  const navigateEntryScreen = (screen: 'welcome' | 'auth' | 'rakshak' | 'terms' | 'privacy') => {
+    if (['welcome', 'auth', 'rakshak'].includes(entryScreen)) {
+      setPreviousEntryScreen(entryScreen as 'welcome' | 'auth' | 'rakshak');
+    }
+    setEntryScreen(screen);
+  };
+
+  const navigatePage = (p: string) => {
+    if (page !== 'terms' && page !== 'privacy') {
+      setPreviousPage(page);
+    }
+    setPage(p);
+  };
 
 
   // Notifications Sync
@@ -169,11 +195,12 @@ export function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [sos]);
 
-  // Phase 3: Continuous Background Location Polling during SOS
+  // Phase 3: Continuous Background Location Polling during SOS or Journey
   useEffect(() => {
-    if (!sos || !navigator.geolocation || !activeSosEventId) return;
+    if ((!sos && !journey) || !navigator.geolocation) return;
+    if (!activeSosEventId && !activeJourneyId) return;
     
-    // Start real-time tracking when SOS is active
+    // Start real-time tracking when SOS or Journey is active
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const lat = position.coords.latitude;
@@ -185,21 +212,26 @@ export function App() {
         localStorage.setItem('lastLocationLng', lng.toString());
 
         // Sync with backend
-        updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => {});
+        if (sos && activeSosEventId) {
+          updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => {});
+        }
+        if (journey && activeJourneyId) {
+          updateLiveJourneyLocation(activeJourneyId, lat, lng, accuracy).catch(() => {});
+        }
       },
-      (error) => console.error("SOS Location tracking error", error),
+      (error) => console.error("Location tracking error", error),
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
 
-    // Stop tracking immediately when SOS is cancelled
+    // Stop tracking immediately when neither is active
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
-        console.log("SOS cancelled - background location tracking stopped.");
+        console.log("Background location tracking stopped.");
       }
     };
-  }, [sos, activeSosEventId]);
+  }, [sos, activeSosEventId, journey, activeJourneyId]);
 
   // Toast Auto-hide
   useEffect(() => {
@@ -240,6 +272,14 @@ export function App() {
           if (session.user.email === 'rakshaasutra@gmail.com') {
             setPage('admin');
           }
+          // Fetch existing journey
+          getCurrentJourney(session.user.id).then((j) => {
+            if (j) {
+              setJourney(j.status === 'active' || j.status === 'paused');
+              setActiveJourneyId(j.id);
+              setJourneyDestination(j.destination);
+            }
+          }).catch(console.error);
         } else {
           setUser(null);
           setAuthStatus('signed-out');
@@ -253,6 +293,15 @@ export function App() {
       setAuthStatus(session ? 'signed-in' : 'signed-out');
       if (event === 'SIGNED_IN' && session?.user?.email === 'rakshaasutra@gmail.com') {
         setPage('admin');
+      }
+      if (event === 'SIGNED_IN' && session?.user) {
+          getCurrentJourney(session.user.id).then((j) => {
+            if (j) {
+              setJourney(j.status === 'active' || j.status === 'paused');
+              setActiveJourneyId(j.id);
+              setJourneyDestination(j.destination);
+            }
+          }).catch(console.error);
       }
     });
 
@@ -531,7 +580,7 @@ export function App() {
     notify('Signed out successfully');
   };
 
-  const nav = (next: string) => setPage(next);
+  const nav = navigatePage;
 
   // Reverse-geocode user location to get city name
   useEffect(() => {
@@ -577,9 +626,51 @@ export function App() {
   if (entryScreen === 'welcome') {
     return (
       <WelcomeScreen
-        onStart={() => { setStarted(true); setEntryScreen('auth'); }}
-        onRakshak={() => setEntryScreen('rakshak')}
+        onStart={() => { setStarted(true); navigateEntryScreen('auth'); }}
+        onRakshak={() => navigateEntryScreen('rakshak')}
+        onTerms={() => navigateEntryScreen('terms')}
+        onPrivacy={() => navigateEntryScreen('privacy')}
       />
+    );
+  }
+
+  if (entryScreen === 'terms') {
+    return (
+      <div className="app">
+        <div className="desktop-shell">
+          <aside className="desktop-rail" aria-label="Desktop context rail">
+            <Brand />
+            <p>Terms of Service</p>
+          </aside>
+          <main className="phone" role="main">
+            <div className="statusbar" aria-hidden="true">
+              <span>9:41</span>
+              <span className="status-icons"><span>▮▮▮</span><span>◒</span></span>
+            </div>
+            <TermsPage onBack={() => navigateEntryScreen(previousEntryScreen)} />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  if (entryScreen === 'privacy') {
+    return (
+      <div className="app">
+        <div className="desktop-shell">
+          <aside className="desktop-rail" aria-label="Desktop context rail">
+            <Brand />
+            <p>Privacy Policy</p>
+          </aside>
+          <main className="phone" role="main">
+            <div className="statusbar" aria-hidden="true">
+              <span>9:41</span>
+              <span className="status-icons"><span>▮▮▮</span><span>◒</span></span>
+            </div>
+            <PrivacyPage onBack={() => navigateEntryScreen(previousEntryScreen)} />
+          </main>
+        </div>
+      </div>
     );
   }
 
@@ -600,6 +691,7 @@ export function App() {
               close={() => setEntryScreen('welcome')}
               finish={() => setEntryScreen('auth')}
               userId={user?.id}
+              nav={(route) => navigateEntryScreen(route as any)}
             />
           </main>
         </div>
@@ -608,7 +700,7 @@ export function App() {
   }
 
   if (authStatus === 'checking') return <LoadingScreen />;
-  if (authStatus === 'signed-out') return <AuthScreen onBack={() => { setStarted(false); setEntryScreen('welcome'); }} />;
+  if (authStatus === 'signed-out') return <AuthScreen onBack={() => { setStarted(false); navigateEntryScreen('welcome'); }} onTerms={() => navigateEntryScreen('terms')} onPrivacy={() => navigateEntryScreen('privacy')} />;
 
   return (
     <div className={dark ? 'app dark' : 'app'}>
@@ -643,8 +735,18 @@ export function App() {
               journey={journey}
               journeyDestination={journeyDestination}
               onOpenJourneySetup={() => setShowJourneySetup(true)}
-              onPauseJourney={() => notify('Journey paused — viewers notified.')}
-              onResumeJourney={() => notify('Journey resumed — live tracking active.')}
+              onPauseJourney={() => {
+                notify('Journey paused — viewers notified.');
+                if (activeJourneyId) {
+                  updateLiveJourney(activeJourneyId, 'paused').catch(console.error);
+                }
+              }}
+              onResumeJourney={() => {
+                notify('Journey resumed — live tracking active.');
+                if (activeJourneyId) {
+                  updateLiveJourney(activeJourneyId, 'active').catch(console.error);
+                }
+              }}
               onEndJourney={() => {
                 setJourney(false);
                 const trackingLink = `${window.location.origin}/track/${user?.id || 'demo'}`;
@@ -653,7 +755,11 @@ export function App() {
                     console.error("Failed to dispatch arrival notifications:", err);
                   });
                 }
+                if (activeJourneyId) {
+                  updateLiveJourney(activeJourneyId, 'arrived').catch(console.error);
+                }
                 setJourneyDestination('');
+                setActiveJourneyId(null);
                 setActiveJourneyContactIds([]);
                 notify('You have arrived safely. Tracking stopped.');
               }}
@@ -735,6 +841,27 @@ export function App() {
             <PrivacyData nav={nav} />
           )}
 
+          {page === 'fake-call-config' && (
+            <FakeCallConfigPage 
+              nav={nav} 
+              callerName={fakeCallName} 
+              setCallerName={(name) => { setFakeCallName(name); localStorage.setItem('fakeCallName', name); }}
+              callerRelation={fakeCallRelation}
+              setCallerRelation={(relation) => { setFakeCallRelation(relation); localStorage.setItem('fakeCallRelation', relation); }}
+              ringtone={fakeCallRingtone}
+              setRingtone={(ringtone) => { setFakeCallRingtone(ringtone); localStorage.setItem('fakeCallRingtone', ringtone); }}
+              notify={notify}
+            />
+          )}
+
+          {page === 'terms' && (
+            <TermsPage onBack={() => navigatePage(previousPage)} />
+          )}
+
+          {page === 'privacy' && (
+            <PrivacyPage onBack={() => navigatePage(previousPage)} />
+          )}
+
           {page === 'support' && (
             <SupportPage nav={nav} />
           )}
@@ -745,7 +872,7 @@ export function App() {
             <AdminPanel nav={nav} notify={notify} />
           )}
 
-          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support'].includes(page) && (
+          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support', 'fake-call-config'].includes(page) && (
             <NotFoundPage nav={nav} />
           )}
 
@@ -760,6 +887,15 @@ export function App() {
           {toast.startsWith('❌') ? <X size={16} /> : <Check size={16} />}
           {toast.startsWith('❌') ? toast.slice(2).trim() : toast}
         </div>
+      )}
+
+      {fakeCall && (
+        <FakeCall 
+          close={() => setFakeCall(false)} 
+          callerName={fakeCallName} 
+          callerRelation={fakeCallRelation} 
+          ringtone={fakeCallRingtone}
+        />
       )}
 
       {sos && (
@@ -784,6 +920,12 @@ export function App() {
             setActiveJourneyContactIds(selectedContactIds);
             setJourney(true);
             setShowJourneySetup(false);
+
+            if (user?.id) {
+              startLiveJourney(user.id, dest, selectedContactIds)
+                .then(j => setActiveJourneyId(j.id))
+                .catch(err => console.error("Failed to start live journey in DB", err));
+            }
 
             const trackingLink = `${window.location.origin}/track/${user?.id || 'demo'}`;
             

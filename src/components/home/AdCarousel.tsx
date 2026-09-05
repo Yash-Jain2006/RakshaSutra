@@ -7,6 +7,7 @@ interface Ad {
   title: string;
   description: string;
   icon_emoji: string;
+  image_url?: string | null;
 }
 
 interface AdCarouselProps {
@@ -26,19 +27,19 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
   const loadAds = async () => {
     if (!supabase) {
       // Fallback to a default ad if no supabase
-      setAds([{ id: 'default', title: 'SafeStep Shoes', description: 'Grip-tech footwear for city commutes', icon_emoji: '🛒' }]);
+      setAds([{ id: 'default', title: 'SafeStep Shoes', description: 'Grip-tech footwear for city commutes', icon_emoji: '🛒', image_url: null }]);
       return;
     }
     const { data, error } = await supabase
       .from('advertisements')
-      .select('id, title, description, icon_emoji')
+      .select('id, title, description, icon_emoji, image_url')
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
       .limit(5);
 
     if (error || !data || data.length === 0) {
       // Show a default placeholder ad
-      setAds([{ id: 'default', title: 'Raksha Sutra', description: 'Your personal safety companion', icon_emoji: '🛡️' }]);
+      setAds([{ id: 'default', title: 'Raksha Sutra', description: 'Your personal safety companion', icon_emoji: '🛡️', image_url: null }]);
     } else {
       setAds(data);
     }
@@ -108,7 +109,27 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
           >
             {ads.map((ad) => (
               <div className="ad-card" key={ad.id}>
-                <div className="ad-icon">{ad.icon_emoji}</div>
+                <div className={`ad-icon ${ad.image_url ? 'has-image' : ''}`}>
+                  {ad.image_url ? (
+                    <img
+                      src={ad.image_url}
+                      alt={ad.title}
+                      className="ad-img"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = 'none';
+                        const parent = (e.currentTarget as HTMLElement).parentElement;
+                        if (parent) {
+                          parent.classList.remove('has-image');
+                          const span = document.createElement('span');
+                          span.textContent = ad.icon_emoji || '🛒';
+                          parent.appendChild(span);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span>{ad.icon_emoji || '🛒'}</span>
+                  )}
+                </div>
                 <div className="ad-content">
                   <span>SPONSORED</span>
                   <b>{ad.title}</b>

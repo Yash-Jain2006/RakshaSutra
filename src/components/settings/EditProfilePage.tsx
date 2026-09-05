@@ -195,9 +195,6 @@ export const EditProfilePage: React.FC<EditProfilePageProps> = ({
               outline: 'none',
             }}
           />
-          <span style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
-            Used for automated WhatsApp & SMS alerts, SOS notifications, and login.
-          </span>
         </div>
 
         {/* Email — read-only */}

@@ -264,8 +264,8 @@ select:focus-visible {
 }
 
 .ad-icon {
-  height: 46px;
-  width: 46px;
+  height: 48px;
+  width: 48px;
   display: grid;
   place-items: center;
   border-radius: 10px;
@@ -274,6 +274,36 @@ select:focus-visible {
   color: #ffffff;
   border: none;
   flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.ad-icon.has-image {
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 1px;
+}
+
+.ad-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 9px;
+  display: block;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
 }
 
 .ad-content {
@@ -613,7 +643,14 @@ select:focus-visible {
 .toolkit {
   display: flex;
   gap: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* Firefox */
+}
+
+.toolkit::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari */
 }
 
 .toolkit button {
@@ -4590,10 +4627,6 @@ input[type=number] {
     font-size: 10px;
   }
 
-  .toolkit button:nth-child(3) {
-    display: none;
-  }
-
   .contact-row {
     min-height: 52px;
   }
@@ -5709,7 +5742,7 @@ input[type=number] {
   margin: 0 auto;
   overflow: hidden;
   background: #000;
-  border-radius: 32px;
+  border-radius: 0;
 }
 
 .welcome-artwork-image {
@@ -5729,23 +5762,24 @@ input[type=number] {
   position: absolute;
   top: 24px;
   right: 24px;
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: transparent;
+  border: none;
   cursor: pointer;
   z-index: 20;
-  transition: all 0.2s ease;
+}
+
+.welcome-lang-btn img {
+  opacity: 0;
 }
 
 .welcome-lang-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
-  transform: scale(1.05);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 
@@ -5775,31 +5809,31 @@ input[type=number] {
   top: 78.39%;
   height: 5.72%;
   border-radius: 17px;
-  background: linear-gradient(103deg, #773fee, #4179e9);
-  box-shadow: 0 12px 25px rgba(71, 55, 196, .34);
+  background: transparent;
 }
 
 .welcome-artwork-rakshak {
   top: 85.37%;
   height: 5.5%;
   border-radius: 16px;
-  background: #000;
-  border: 1.5px solid #7446df;
-  box-shadow: inset 0 0 20px rgba(31, 12, 91, .8);
+  background: transparent;
   width: 32.5dvh;
 }
 
 .welcome-artwork-cta:focus-visible {
-  outline: 3px solid #fff;
+  outline: 3px solid rgba(255, 255, 255, 0.5);
   outline-offset: 3px;
   border-radius: 16px;
 }
 
 .welcome-artwork-cta-text {
-  color: #fff;
+  color: transparent;
   font-size: clamp(14px, 2dvh, 19px);
   font-weight: 800;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .welcome-footer-links {
@@ -5809,27 +5843,24 @@ input[type=number] {
   transform: translateX(-50%);
   width: 85%;
   height: 20px;
-  /* Blend seamlessly with the image using exact color match and massive feathered edges */
-  background: #120e28;
-  box-shadow: 0 0 20px 20px #120e28;
+  background: transparent;
+  box-shadow: none;
   border-radius: 20px;
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: #8b92b2;
+  color: transparent;
   font-size: clamp(10px, 1.4dvh, 13px);
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
+.welcome-footer-links button,
 .welcome-footer-links span {
+  color: transparent;
+  background: transparent;
   cursor: pointer;
-  transition: color 0.2s;
-}
-
-.welcome-footer-links span:hover {
-  color: #ffffff;
 }
 
 .welcome-footer-links b {

@@ -223,7 +223,7 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
               {' '}&amp;{' '}
               <button 
                 type="button" 
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('privacy-data'); }} 
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('privacy'); }} 
                 style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
               >
                 Privacy Policy

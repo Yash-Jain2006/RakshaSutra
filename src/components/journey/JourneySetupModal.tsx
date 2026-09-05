@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Check, MapPin, Navigation, X } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { EmergencyContact } from '../../types/models';
 
 interface JourneySetupModalProps {
@@ -19,6 +20,7 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentLoc, setCurrentLoc] = useState<{lat: number, lon: number} | null>(null);
   const searchTimeout = useRef<number | null>(null);
+  const { i18n } = useTranslation();
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -47,7 +49,7 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
     searchTimeout.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&addressdetails=1&limit=5`;
+        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&addressdetails=1&limit=5&accept-language=${i18n.language}`;
         if (currentLoc) {
           // Create a ~50km viewbox around the user's location (0.5 degrees)
           // viewbox format: <left>,<top>,<right>,<bottom> -> min_lon, max_lat, max_lon, min_lat

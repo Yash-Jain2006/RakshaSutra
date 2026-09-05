@@ -204,7 +204,7 @@ Deno.serve(async (request: Request) => {
     }
   }
 
-  sendAlerts() // run asynchronously
+  await sendAlerts() // wait for completion
 
   return json({
     message: 'Journey dispatch successful',

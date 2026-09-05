@@ -56,3 +56,15 @@ export async function updateLiveJourney(id: string, status: JourneyStatus) {
     .eq('id', id);
   if (error) throw error;
 }
+
+export async function updateLiveJourneyLocation(journeyId: string, latitude: number, longitude: number, accuracyMeters: number | null) {
+  const { error } = await configuredClient()
+    .from('journey_location_points')
+    .insert({
+      journey_id: journeyId,
+      latitude,
+      longitude,
+      accuracy_meters: accuracyMeters
+    });
+  if (error) throw error;
+}

@@ -32,6 +32,19 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   const leafletMapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
+  const viewerMarkerRef = useRef<L.Marker | null>(null);
+  const [viewerLocation, setViewerLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      const watchId = navigator.geolocation.watchPosition(
+        (pos) => setViewerLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.error("Could not get viewer location", err),
+        { enableHighAccuracy: true }
+      );
+      return () => navigator.geolocation.clearWatch(watchId);
+    }
+  }, []);
 
   useEffect(() => {
     const fetchTracking = async () => {
@@ -92,6 +105,22 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     }
   }, [data]);
 
+  useEffect(() => {
+    if (!leafletMapRef.current || !viewerLocation) return;
+    
+    if (!viewerMarkerRef.current) {
+      const viewerIcon = L.divIcon({
+        className: 'custom-viewer-icon',
+        html: `<div style="background-color: #8b5cf6; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+      viewerMarkerRef.current = L.marker([viewerLocation.lat, viewerLocation.lng], { icon: viewerIcon }).addTo(leafletMapRef.current);
+    } else {
+      viewerMarkerRef.current.setLatLng([viewerLocation.lat, viewerLocation.lng]);
+    }
+  }, [viewerLocation]);
+
   if (loading) {
     return (
       <div className="public-tracking-loading">
@@ -115,6 +144,10 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
   const isSos = data.type === 'sos';
   const isActive = data.status === 'active' || data.status === 'started';
+
+  const dirUrl = viewerLocation && data.latitude && data.longitude
+    ? `https://www.google.com/maps/dir/?api=1&origin=${viewerLocation.lat},${viewerLocation.lng}&destination=${data.latitude},${data.longitude}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${data.latitude},${data.longitude}`;
 
   return (
     <div className="public-tracking-container">
@@ -146,7 +179,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           </p>
           {isActive && data.latitude && data.longitude && (
             <a 
-              href={`https://www.google.com/maps/dir/?api=1&destination=${data.latitude},${data.longitude}`}
+              href={dirUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="public-tracking-pill"

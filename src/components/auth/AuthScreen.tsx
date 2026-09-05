@@ -4,6 +4,8 @@ import { signInWithEmailPassword, signInWithGoogle, signUpWithPassword } from '.
 
 interface AuthScreenProps {
   onBack?: () => void;
+  onTerms?: () => void;
+  onPrivacy?: () => void;
 }
 
 type AuthMode = 'login' | 'signup';
@@ -26,7 +28,7 @@ export const LoadingScreen: React.FC = () => (
   </div>
 );
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
+export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack, onTerms, onPrivacy }) => {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -161,7 +163,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
                 </label>
                 <label className="ref-terms">
                   <input checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" />
-                  <span>I agree to <button type="button">Terms</button> &amp; <button type="button">Privacy Policy</button></span>
+                  <span>I agree to <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTerms?.(); }}>Terms</button> &amp; <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onPrivacy?.(); }}>Privacy Policy</button></span>
                 </label>
               </>
             )}
@@ -180,7 +182,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onBack }) => {
           </p>
         </section>
 
-        {isLogin && <p className="ref-auth-legal">By continuing you agree to our <button type="button">Terms</button> &amp; <button type="button">Privacy Policy</button></p>}
+        {isLogin && <p className="ref-auth-legal">By continuing you agree to our <button type="button" onClick={(e) => { e.preventDefault(); onTerms?.(); }}>Terms</button> &amp; <button type="button" onClick={(e) => { e.preventDefault(); onPrivacy?.(); }}>Privacy Policy</button></p>}
       </main>
     </div>
   );

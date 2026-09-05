@@ -8,6 +8,7 @@ export interface Advertisement {
   title: string;
   description: string;
   icon_emoji: string;
+  image_url?: string | null;
   target_url?: string | null;
 }
 
@@ -41,7 +42,7 @@ export async function listActiveAdvertisements(): Promise<Advertisement[]> {
   const now = new Date().toISOString();
   const { data, error } = await configuredClient()
     .from('advertisements')
-    .select('id, title, description, icon_emoji, target_url, starts_at, ends_at')
+    .select('id, title, description, icon_emoji, image_url, target_url, starts_at, ends_at')
     .eq('is_active', true)
     .order('sort_order', { ascending: true })
     .limit(5);
