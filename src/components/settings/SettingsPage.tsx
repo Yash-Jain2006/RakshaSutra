@@ -1,19 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Bell,
-  Camera,
-  ChevronRight,
-  Clock3,
-  HeartHandshake,
-  LockKeyhole,
-  MessageCircle,
-  Moon,
-  Phone,
-  Settings,
-  ShieldCheck,
-  UsersRound,
-  UserPen,
-} from 'lucide-react';
+import { LogOut, ChevronRight, Moon, Globe, Bell, ShieldCheck, HeartHandshake, FileText, Camera, Phone, LockKeyhole, Info, UsersRound, UserPen, Clock3, MessageCircle, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BackHeader } from '../layout/BackHeader.tsx';
 import { LanguageSelector } from './LanguageSelector.tsx';
@@ -204,9 +190,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <ChevronRight size={16} />
         </button>
 
-        <button className="setting-row" onClick={() => nav('support')}>
+        <button className="setting-row" onClick={() => nav('support-supports')}>
           <span><HeartHandshake size={18} /></span>
-          <b>{t('settings.supports_helplines', 'Our Supports & Helplines')}</b>
+          <b>{t('settings.our_supports', 'Our Supports')}</b>
+          <ChevronRight size={16} />
+        </button>
+
+        <button className="setting-row" onClick={() => nav('support-about')}>
+          <span><Info size={18} /></span>
+          <b>{t('settings.about_raksha_sutra', 'About Raksha Sutra')}</b>
           <ChevronRight size={16} />
         </button>
       </div>

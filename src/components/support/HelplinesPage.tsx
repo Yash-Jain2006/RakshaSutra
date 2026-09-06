@@ -3,11 +3,11 @@ import { HeartHandshake, Phone } from 'lucide-react';
 import { SectionTitle } from '../common/SectionTitle';
 import { BackHeader } from '../layout/BackHeader';
 
-interface SupportPageProps {
+interface HelplinesPageProps {
   nav: (page: string) => void;
 }
 
-export const SupportPage: React.FC<SupportPageProps> = ({ nav }) => {
+export const HelplinesPage: React.FC<HelplinesPageProps> = ({ nav }) => {
   const helplines = [
     ['National Emergency', '112', 'Immediate emergency response'],
     ['Women Helpline', '181', '24/7 women’s support and guidance'],

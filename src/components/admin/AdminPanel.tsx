@@ -6,6 +6,7 @@ import { ManageRakshaks } from './ManageRakshaks';
 import { ManageSosLogs } from './ManageSosLogs';
 import { ManageReports } from './ManageReports';
 import { ManageAds } from './ManageAds';
+import { ManageSupports } from './ManageSupports';
 
 import { configuredClient } from '../../services/safetyService';
 
@@ -15,7 +16,7 @@ interface AdminPanelProps {
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Reports' | 'Ads' | 'Phase2Stub'>('Overview');
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Rakshaks' | 'SOS Logs' | 'Reports' | 'Ads' | 'Supports' | 'Phase2Stub'>('Overview');
   const [stubTitle, setStubTitle] = useState('');
   const [metrics, setMetrics] = useState({ sos: 0, rakshaks: 0, reports: 0, places: 0 });
 
@@ -49,11 +50,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
     'SOS Logs',
     'Reports',
     'Ads',
+    'Supports',
     'Safe Zones (P2)',
   ];
 
   const handleTabClick = (item: string) => {
-    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs' || item === 'Reports' || item === 'Ads') {
+    if (item === 'Overview' || item === 'Rakshaks' || item === 'SOS Logs' || item === 'Reports' || item === 'Ads' || item === 'Supports') {
       setActiveTab(item as any);
     } else {
       setStubTitle(item);
@@ -77,6 +79,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
             (activeTab === 'SOS Logs' && item === 'SOS Logs') ||
             (activeTab === 'Reports' && item === 'Reports') ||
             (activeTab === 'Ads' && item === 'Ads') ||
+            (activeTab === 'Supports' && item === 'Supports') ||
             (activeTab === 'Phase2Stub' && item === stubTitle);
 
           return (
@@ -148,6 +151,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ nav, notify }) => {
       {activeTab === 'SOS Logs' && <ManageSosLogs />}
       {activeTab === 'Reports' && <ManageReports notify={notify} />}
       {activeTab === 'Ads' && <ManageAds notify={notify} />}
+      {activeTab === 'Supports' && <ManageSupports />}
 
       {activeTab === 'Phase2Stub' && (
         <div className="admin-card coming-card" style={{ textAlign: 'center', padding: '32px 16px' }}>

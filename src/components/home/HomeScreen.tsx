@@ -250,7 +250,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Safety Toolkit Shortcuts */}
-      <SectionTitle title={t('home.safety_toolkit', 'Safety toolkit')} action={t('home.see_all', 'See all')} onClick={() => nav('map')} />
+      <SectionTitle title={t('home.safety_toolkit', 'Safety toolkit')} action={t('home.see_all', 'See all')} onClick={() => nav('helplines')} />
       <div className="toolkit">
         <button onClick={() => nav('map')}>
           <MapIcon />

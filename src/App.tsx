@@ -36,7 +36,9 @@ import { EditProfilePage } from './components/settings/EditProfilePage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { FakeCallConfigPage } from './components/settings/FakeCallConfigPage';
 import { SOSOverlay } from './components/sos/SOSOverlay';
-import { SupportPage } from './components/support/SupportPage';
+import { OurSupportsPage } from './components/support/OurSupportsPage';
+import { AboutPage } from './components/support/AboutPage';
+import { HelplinesPage } from './components/support/HelplinesPage';
 import { PrivacyData } from './components/settings/PrivacyData';
 import { ActivityHistoryPage } from './components/settings/ActivityHistoryPage';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
@@ -862,8 +864,16 @@ export function App() {
             <PrivacyPage onBack={() => navigatePage(previousPage)} />
           )}
 
-          {page === 'support' && (
-            <SupportPage nav={nav} />
+          {page === 'support-about' && (
+            <AboutPage nav={nav} />
+          )}
+
+          {page === 'support-supports' && (
+            <OurSupportsPage nav={nav} />
+          )}
+
+          {page === 'helplines' && (
+            <HelplinesPage nav={nav} />
           )}
 
 
@@ -872,7 +882,7 @@ export function App() {
             <AdminPanel nav={nav} notify={notify} />
           )}
 
-          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support', 'fake-call-config'].includes(page) && (
+          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support-about', 'support-supports', 'fake-call-config', 'helplines'].includes(page) && (
             <NotFoundPage nav={nav} />
           )}
 
