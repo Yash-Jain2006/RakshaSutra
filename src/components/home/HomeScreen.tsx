@@ -235,7 +235,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       {/* Safety Action Tiles */}
       <div className="safety-actions">
-        <button className="unsafe" onClick={() => nav('community')}>
+        <button className="unsafe" onClick={() => nav('rakshak')}>
           <AlertTriangle size={19} />
           <span>{t('home.feeling_unsafe', 'Feeling Unsafe')}</span>
         </button>

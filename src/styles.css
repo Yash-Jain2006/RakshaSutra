@@ -559,7 +559,7 @@ select:focus-visible {
   color: #3b82f6;
   background: #f8fafc;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   transition: background 0.2s;
 }
 
@@ -584,9 +584,13 @@ select:focus-visible {
   justify-content: center;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   transition: background 0.2s, border-color 0.2s;
+}
+
+.safety-actions button span {
+  font-weight: 800;
 }
 
 .unsafe {
@@ -624,14 +628,14 @@ select:focus-visible {
 .section-title h2 {
   margin: 0;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .section-title button {
   background: none;
   color: var(--text-muted);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
   transition: color 0.2s;
 }
 
@@ -664,7 +668,7 @@ select:focus-visible {
   background: var(--bg-elevated);
   color: var(--text-muted);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 800;
   border: 1px solid var(--border-subtle);
   transition: color 0.2s, background 0.2s;
 }
@@ -787,7 +791,7 @@ select:focus-visible {
   color: var(--text-dim);
   background: transparent;
   font-size: 8px;
-  font-weight: 700;
+  font-weight: 800;
   transition: color 0.2s;
 }
 
@@ -4610,7 +4614,7 @@ input[type=number] {
 
   .safety-actions button {
     min-height: 80px;
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .section-title h2 {
@@ -5737,33 +5741,35 @@ input[type=number] {
 .welcome-artwork-frame {
   position: relative;
   width: 100%;
-  max-width: 46.137dvh;
+  max-width: calc(100dvh * 458 / 1024);
   height: 100dvh;
+  aspect-ratio: 458 / 1024;
   margin: 0 auto;
   overflow: hidden;
-  background: #000;
-  border-radius: 0;
+  background: #130c4a;
+  border-radius: 28px;
 }
 
 .welcome-artwork-image {
   position: absolute;
   top: 0;
-  left: 50%;
+  left: 0;
   display: block;
-  width: auto;
+  width: 100%;
   height: 100%;
-  max-width: none;
-  transform: translateX(-50%);
+  object-fit: fill;
   pointer-events: none;
   user-select: none;
 }
 
 .welcome-lang-btn {
   position: absolute;
-  top: 24px;
-  right: 24px;
-  width: 50px;
-  height: 50px;
+  top: 3.3%;
+  right: 7.4%;
+  width: 9.4%;
+  height: 4.3%;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5772,6 +5778,7 @@ input[type=number] {
   border: none;
   cursor: pointer;
   z-index: 20;
+  transition: background 0.2s, transform 0.15s;
 }
 
 .welcome-lang-btn img {
@@ -5779,10 +5786,8 @@ input[type=number] {
 }
 
 .welcome-lang-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.12);
 }
-
-
 
 .welcome-lang-btn:active {
   transform: scale(0.95);
@@ -5791,91 +5796,190 @@ input[type=number] {
 .welcome-artwork-cta {
   position: absolute;
   left: 50%;
-  width: 32.5dvh;
-  max-width: 96%;
+  transform: translateX(-50%);
   padding: 0;
   border: 0;
   appearance: none;
   background: transparent;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   cursor: pointer;
+  z-index: 10;
+  transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .welcome-artwork-start {
-  top: 78.39%;
-  height: 5.72%;
-  border-radius: 17px;
-  background: transparent;
+  top: 83.5%;
+  height: 4.8%;
+  width: 59.4%;
+  border-radius: 20px;
 }
 
 .welcome-artwork-rakshak {
-  top: 85.37%;
-  height: 5.5%;
+  top: 89.55%;
+  height: 4.0%;
+  width: 58.7%;
   border-radius: 16px;
-  background: transparent;
-  width: 32.5dvh;
+}
+
+.welcome-artwork-cta:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.welcome-artwork-cta:active {
+  transform: translateX(-50%) scale(0.97);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .welcome-artwork-cta:focus-visible {
-  outline: 3px solid rgba(255, 255, 255, 0.5);
-  outline-offset: 3px;
-  border-radius: 16px;
+  outline: 2px solid rgba(255, 255, 255, 0.7);
+  outline-offset: 2px;
 }
 
 .welcome-artwork-cta-text {
   color: transparent;
-  font-size: clamp(14px, 2dvh, 19px);
+  font-size: clamp(14px, 2dvh, 18px);
   font-weight: 800;
   white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
   display: flex;
   align-items: center;
-  justify-content: center;
 }
 
 .welcome-footer-links {
   position: absolute;
-  bottom: 30px;
+  bottom: 1.4%;
   left: 50%;
   transform: translateX(-50%);
-  width: 85%;
-  height: 20px;
+  width: max-content;
+  max-width: 95%;
+  height: auto;
   background: transparent;
   box-shadow: none;
-  border-radius: 20px;
-  z-index: 10;
+  border-radius: 8px;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  color: transparent;
-  font-size: clamp(10px, 1.4dvh, 13px);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.welcome-footer-links button,
-.welcome-footer-links span {
-  color: transparent;
+.welcome-footer-links button {
+  color: rgba(255, 255, 255, 0.95);
   background: transparent;
   cursor: pointer;
+  padding: 4px 6px;
+  border: none;
+  font-size: clamp(11px, 1.3dvh, 12.5px);
+  font-weight: 800;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.2;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  letter-spacing: 0.1px;
+  white-space: nowrap;
 }
 
-.welcome-footer-links b {
-  color: #475569;
+.welcome-footer-links button:hover {
+  color: #ffffff;
+  text-decoration: underline;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.welcome-footer-links button:active {
+  transform: scale(0.96);
+}
+
+.welcome-footer-links button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+.welcome-footer-links span {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 800;
+  font-size: 11px;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .welcome-artwork-hide-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 25px;
-  background: #000;
-  z-index: 10;
+  display: none;
 }
+
+
+/* ── Mobile Welcome: authentic artwork scaling ── */
+@media (max-width: 690px) {
+  .welcome-artwork-root {
+    min-height: 100dvh;
+    background: #130c4a;
+  }
+
+  .welcome-artwork-frame {
+    position: relative;
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+    background: #130c4a;
+    overflow: hidden;
+  }
+
+  /* Fill frame edge-to-edge covering full top and bottom with zero distortion */
+  .welcome-artwork-image {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  /* Language button */
+  .welcome-lang-btn {
+    top: 3.3%;
+    right: 7.4%;
+  }
+
+  /* CTA buttons */
+  .welcome-artwork-cta {
+    width: 59.4%;
+    max-width: 320px;
+  }
+
+  .welcome-artwork-start {
+    top: 83.5%;
+    height: 4.8%;
+    width: 59.4%;
+    border-radius: 20px;
+  }
+
+  .welcome-artwork-rakshak {
+    top: 89.55%;
+    height: 4.0%;
+    width: 58.7%;
+    border-radius: 16px;
+  }
+
+  .welcome-footer-links {
+    bottom: 1.4%;
+    top: auto;
+    width: max-content;
+    max-width: 95%;
+    height: auto;
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
+
 
 /* --- DYNAMIC HERO OVERLAY --- */
 .welcome-hero-overlay {
@@ -6509,12 +6613,6 @@ input[type=number] {
   font-size: 14px;
 }
 
-.welcome-footer-links button {
-  padding: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
 
 /* Reference form shell shared by sign-in, account creation, and Rakshak. */
 .reference-flow-root {
