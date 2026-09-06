@@ -36,7 +36,12 @@ export const ActivityHistoryPage: React.FC<ActivityHistoryPageProps> = ({ nav, u
       .limit(50);
       
     if (data && !error) {
-      const mappedLogs = data.map((e: any) => {
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+      const validData = data.filter((e: any) => new Date(e.started_at) >= ninetyDaysAgo);
+
+      const mappedLogs = validData.map((e: any) => {
         const start = new Date(e.started_at).getTime();
         const endTimeStr = e.safe_at || e.cancelled_at || e.ended_at;
         const end = endTimeStr ? new Date(endTimeStr).getTime() : Date.now();
