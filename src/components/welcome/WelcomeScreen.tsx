@@ -63,7 +63,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onStart, onRakshak
       <main className="welcome-artwork-frame" aria-label="Raksha Sutra welcome screen">
         <img
           className="welcome-artwork-image"
-          src="/welcome-artwork.png"
+          src="/welcome-reference.jpeg"
           alt="Raksha Sutra safety network illustration"
         />
 

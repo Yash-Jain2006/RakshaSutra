@@ -5782,7 +5782,7 @@ input[type=number] {
 }
 
 .welcome-lang-btn img {
-  opacity: 0;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
 }
 
 .welcome-lang-btn:hover {
@@ -5811,17 +5811,17 @@ input[type=number] {
 }
 
 .welcome-artwork-start {
-  top: 83.5%;
-  height: 4.8%;
-  width: 59.4%;
+  top: 75.5%;
+  height: 6.5%;
+  width: 75%;
   border-radius: 20px;
 }
 
 .welcome-artwork-rakshak {
-  top: 89.55%;
-  height: 4.0%;
-  width: 58.7%;
-  border-radius: 16px;
+  top: 83.5%;
+  height: 6.5%;
+  width: 75%;
+  border-radius: 20px;
 }
 
 .welcome-artwork-cta:hover {
@@ -5851,7 +5851,7 @@ input[type=number] {
 
 .welcome-footer-links {
   position: absolute;
-  bottom: 1.4%;
+  bottom: 2.5%;
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
@@ -5869,7 +5869,7 @@ input[type=number] {
 }
 
 .welcome-footer-links button {
-  color: rgba(255, 255, 255, 0.95);
+  color: #64748b;
   background: transparent;
   cursor: pointer;
   padding: 4px 6px;
@@ -5885,9 +5885,9 @@ input[type=number] {
 }
 
 .welcome-footer-links button:hover {
-  color: #ffffff;
+  color: #334155;
   text-decoration: underline;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .welcome-footer-links button:active {
@@ -5900,7 +5900,7 @@ input[type=number] {
 }
 
 .welcome-footer-links span {
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(100, 116, 139, 0.5);
   font-weight: 800;
   font-size: 11px;
   user-select: none;
@@ -6549,6 +6549,7 @@ input[type=number] {
   width: 36px;
   height: 36px;
   object-fit: contain;
+  filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.4));
 }
 
 .welcome-language-menu {
