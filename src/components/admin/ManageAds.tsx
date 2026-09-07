@@ -193,17 +193,17 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
     try {
       for (let i = 0; i < ads.length; i++) {
         const ad = ads[i];
-        if (!ad.title.trim()) {
-          notify(`Ad #${i + 1} is missing a heading.`);
+        if (!ad.image_url || !ad.image_url.trim()) {
+          notify(`Ad #${i + 1} is missing an image.`);
           setSaving(false);
           return;
         }
 
         const payload = {
-          title: ad.title.trim(),
-          description: ad.description.trim(),
-          icon_emoji: ad.icon_emoji || '🛒',
-          image_url: ad.image_url ? ad.image_url.trim() : '',
+          title: `Ad ${i + 1}`,
+          description: '',
+          icon_emoji: '🖼️',
+          image_url: ad.image_url.trim(),
           is_active: ad.is_active,
           sort_order: i,
         };
@@ -243,7 +243,7 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
       </div>
 
       <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px' }}>
-        Upload product images and headings. Ads appear as a scrolling banner on the Home screen. Maximum 5 ads.
+        Upload product images. Ads appear as a scrolling banner on the Home screen. Maximum 5 ads.
       </p>
 
       {ads.length === 0 && (
@@ -543,46 +543,6 @@ export const ManageAds: React.FC<ManageAdsProps> = ({ notify }) => {
               )}
             </div>
 
-            {/* Heading */}
-            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
-              Heading
-            </label>
-            <input
-              type="text"
-              value={ad.title}
-              onChange={(e) => updateAd(index, 'title', e.target.value)}
-              placeholder="e.g. Shopping"
-              maxLength={40}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                fontSize: '13px',
-                marginBottom: '8px',
-                boxSizing: 'border-box',
-              }}
-            />
-
-            {/* Description */}
-            <label style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', display: 'block', marginBottom: '4px' }}>
-              Description
-            </label>
-            <input
-              type="text"
-              value={ad.description}
-              onChange={(e) => updateAd(index, 'description', e.target.value)}
-              placeholder="e.g. Everything at cheaper price"
-              maxLength={80}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: '1px solid #e2e8f0',
-                fontSize: '13px',
-                boxSizing: 'border-box',
-              }}
-            />
           </div>
         ))}
       </div>

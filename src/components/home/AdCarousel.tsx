@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -17,8 +17,6 @@ interface AdCarouselProps {
 export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
   const [ads, setAds] = useState<Ad[]>([]);
   const [current, setCurrent] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadAds();
@@ -26,8 +24,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
 
   const loadAds = async () => {
     if (!supabase) {
-      // Fallback to a default ad if no supabase
-      setAds([{ id: 'default', title: 'SafeStep Shoes', description: 'Grip-tech footwear for city commutes', icon_emoji: '🛒', image_url: null }]);
+      setAds([]);
       return;
     }
     const { data, error } = await supabase
@@ -38,8 +35,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
       .limit(5);
 
     if (error || !data || data.length === 0) {
-      // Show a default placeholder ad
-      setAds([{ id: 'default', title: 'Raksha Sutra', description: 'Your personal safety companion', icon_emoji: '🛡️', image_url: null }]);
+      setAds([]);
     } else {
       setAds(data);
     }
@@ -60,32 +56,14 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
   // Auto-scroll every 4 seconds
   useEffect(() => {
     if (ads.length <= 1) return;
-    timerRef.current = setInterval(next, 4000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+    const interval = setInterval(next, 3000);
+    return () => clearInterval(interval);
   }, [ads.length, next]);
-
-  // Pause auto-scroll on touch/hover
-  const pauseAuto = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-  };
-
-  const resumeAuto = () => {
-    if (ads.length <= 1) return;
-    timerRef.current = setInterval(next, 4000);
-  };
 
   if (ads.length === 0) return null;
 
   return (
-    <div
-      className="ad-carousel-wrapper"
-      onMouseEnter={pauseAuto}
-      onMouseLeave={resumeAuto}
-      onTouchStart={pauseAuto}
-      onTouchEnd={resumeAuto}
-    >
+    <div className="ad-carousel-wrapper">
       <div className="ad-carousel">
         {/* Left Arrow */}
         {ads.length > 1 && (
@@ -99,7 +77,7 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
         )}
 
         {/* Track */}
-        <div className="ad-track" ref={trackRef}>
+        <div className="ad-track">
           <div
             className="ad-slides"
             style={{
@@ -108,33 +86,17 @@ export const AdCarousel: React.FC<AdCarouselProps> = ({ notify }) => {
             }}
           >
             {ads.map((ad) => (
-              <div className="ad-card" key={ad.id}>
-                <div className={`ad-icon ${ad.image_url ? 'has-image' : ''}`}>
-                  {ad.image_url ? (
-                    <img
-                      src={ad.image_url}
-                      alt={ad.title}
-                      className="ad-img"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLElement).style.display = 'none';
-                        const parent = (e.currentTarget as HTMLElement).parentElement;
-                        if (parent) {
-                          parent.classList.remove('has-image');
-                          const span = document.createElement('span');
-                          span.textContent = ad.icon_emoji || '🛒';
-                          parent.appendChild(span);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span>{ad.icon_emoji || '🛒'}</span>
-                  )}
-                </div>
-                <div className="ad-content">
-                  <span>SPONSORED</span>
-                  <b>{ad.title}</b>
-                  <p>{ad.description}</p>
-                </div>
+              <div className="ad-card" key={ad.id} style={{ padding: 0, background: 'transparent' }}>
+                {ad.image_url ? (
+                  <img
+                    src={ad.image_url}
+                    alt="Advertisement"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '12px' }}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : null}
               </div>
             ))}
           </div>

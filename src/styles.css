@@ -170,9 +170,9 @@ select:focus-visible {
 
 .home-header p {
   margin: 0 0 3px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 400;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .home-header h1 {
@@ -187,8 +187,9 @@ select:focus-visible {
   align-items: center;
   gap: 3px;
   margin-top: 4px;
-  color: var(--text-dim);
-  font-size: 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .header-actions {
@@ -666,8 +667,8 @@ select:focus-visible {
   padding: 10px;
   border-radius: 8px;
   background: var(--bg-elevated);
-  color: var(--text-muted);
-  font-size: 9px;
+  color: var(--text-primary);
+  font-size: 11px;
   font-weight: 800;
   border: 1px solid var(--border-subtle);
   transition: color 0.2s, background 0.2s;
