@@ -100,6 +100,7 @@ export interface IncidentReport {
   rating: 'Safe' | 'Unsafe';
   anonymous: boolean;
   status: string;
+  photo?: File | null;
 }
 
 export interface JourneySession {

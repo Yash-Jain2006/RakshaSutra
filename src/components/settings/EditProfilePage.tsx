@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Camera, Check, Loader2 } from 'lucide-react';
 import { BackHeader } from '../layout/BackHeader.tsx';
-import { updateMyProfile } from '../../services/profileService.ts';
+import { getMyProfile, updateMyProfile } from '../../services/profileService.ts';
 import { isSupabaseConfigured } from '../../lib/supabase.ts';
 
 interface EditProfilePageProps {

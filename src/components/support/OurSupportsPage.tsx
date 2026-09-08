@@ -41,7 +41,7 @@ export const OurSupportsPage: React.FC<OurSupportsPageProps> = ({ nav }) => {
 
   return (
     <section className="screen">
-      <BackHeader title="Our Supports" onBack={() => nav('settings')} />
+      <BackHeader title="Our Supports" onBack={() => nav('home')} />
       
       <div className="scroll-content" style={{ padding: '24px 20px', paddingBottom: '100px' }}>
         <p style={{ color: '#64748b', fontSize: '15px', lineHeight: 1.5, marginBottom: '24px' }}>

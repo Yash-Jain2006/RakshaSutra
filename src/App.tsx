@@ -271,6 +271,20 @@ export function App() {
           } catch { /* silently ignore check failures */ }
           setUser({ id: session.user.id, email: session.user.email, user_metadata: session.user.user_metadata });
           setAuthStatus('signed-in');
+
+          // Sync real user name to public.profiles if present in metadata
+          const actualName = session.user.user_metadata?.display_name || session.user.user_metadata?.name || session.user.user_metadata?.full_name;
+          if (actualName && actualName.trim() && supabase) {
+            (async () => {
+              try {
+                await supabase.from('profiles').update({ display_name: actualName.trim() }).eq('id', session.user.id);
+                setProfileDisplayName(actualName.trim());
+              } catch (e) {
+                console.warn('Profile sync error:', e);
+              }
+            })();
+          }
+
           if (session.user.email === 'rakshaasutra@gmail.com') {
             setPage('admin');
           }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Map as MapIcon, Settings, SlidersHorizontal, UsersRound, ArrowLeft } from 'lucide-react';
+import { Compass, HeartHandshake, Map as MapIcon, SlidersHorizontal, UsersRound, ArrowLeft } from 'lucide-react';
 
 import { useTranslation } from 'react-i18next';
 
@@ -16,7 +16,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ page, nav, isAdmin }) => {
     ['home', Compass, t('nav.home', 'Home')],
     ['map', MapIcon, t('nav.map', 'Map')],
     ['rakshak', UsersRound, t('nav.rakshaks', 'Rakshaks')],
-    ['settings', Settings, t('nav.settings', 'Settings')],
+    ['support-supports', HeartHandshake, t('nav.our_supports', 'Supports')],
   ];
 
   return (

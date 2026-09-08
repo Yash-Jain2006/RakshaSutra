@@ -11,6 +11,7 @@ import {
   Phone,
   Zap,
   Info,
+  Settings,
   ShieldCheck,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -109,7 +110,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     <section className="screen home-screen">
       <header className="home-header">
         <div>
-          <p>
+          <p style={{ fontFamily: '"Times New Roman", Times, serif' }}>
             {greeting.text} <span>{greeting.emoji}</span>
           </p>
           <h1 style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -133,7 +134,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </span>
             )}
           </h1>
-          <span className="location">
+          <span className="location" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
             <MapPin size={12} />
             {cityLabel || t('home.locating', 'Locating…')}
           </span>
@@ -142,6 +143,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <button ref={bellRef} onClick={() => setShowNotif(!showNotif)} aria-label="Notifications">
             <Bell size={20} />
             {unreadCount > 0 && <i />}
+          </button>
+          <button onClick={() => nav('settings')} aria-label="Settings">
+            <Settings size={20} />
           </button>
         </div>
       </header>
