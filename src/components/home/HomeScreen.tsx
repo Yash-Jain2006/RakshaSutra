@@ -29,6 +29,7 @@ interface HomeScreenProps {
   onPauseJourney: () => void;
   onResumeJourney: () => void;
   onEndJourney: () => void;
+  onOpenJourneyScreen?: () => void;
   sendSOS: () => void;
   startSOSHold: () => void;
   cancelSOSHold: () => void;
@@ -52,6 +53,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onPauseJourney,
   onResumeJourney,
   onEndJourney,
+  onOpenJourneyScreen,
   sendSOS,
   startSOSHold,
   cancelSOSHold,
@@ -194,6 +196,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         onPauseJourney={onPauseJourney}
         onResumeJourney={onResumeJourney}
         onEndJourney={onEndJourney}
+        onOpenActiveScreen={onOpenJourneyScreen}
       />
 
       {/* Protected SOS Hold Control */}

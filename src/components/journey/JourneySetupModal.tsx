@@ -1,12 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Check, MapPin, Navigation, X } from 'lucide-react';
+import {
+  Bike,
+  Car,
+  Check,
+  Footprints,
+  Loader2,
+  MapPin,
+  Navigation,
+  X,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { EmergencyContact } from '../../types/models';
+import { defaultGeocodingProvider, type GeocodedPlace } from '../../services/providers/geocodingProvider';
+import { defaultRoutingProvider, type RouteResult, type TransportMode } from '../../services/providers/routingProvider';
+import { defaultLocationProvider } from '../../services/providers/locationProvider';
+
+/**
+ * Formats a duration in seconds to a human-readable string.
+ * - < 60 min  → "X min"
+ * - >= 60 min → "Xhr Ymin"  (e.g. 71 min = "1hr 11min")
+ */
+function formatDuration(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return mins === 0 ? `${hours}hr` : `${hours}hr ${mins}min`;
+}
 
 interface JourneySetupModalProps {
   contacts: EmergencyContact[];
   close: () => void;
-  startJourney: (destination: string, selectedContactIds: (string | number)[]) => void;
+  startJourney: (
+    destination: string,
+    destinationCoords: [number, number],
+    selectedContactIds: (string | number)[],
+    mode: TransportMode,
+    route?: RouteResult | null
+  ) => void;
 }
 
 export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
@@ -15,29 +46,41 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
   startJourney,
 }) => {
   const [destination, setDestination] = useState('');
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [selectedCoords, setSelectedCoords] = useState<[number, number] | null>(null);
+  const [suggestions, setSuggestions] = useState<GeocodedPlace[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [currentLoc, setCurrentLoc] = useState<{lat: number, lon: number} | null>(null);
-  const searchTimeout = useRef<number | null>(null);
-  const { i18n } = useTranslation();
+  const [currentLoc, setCurrentLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [transportMode, setTransportMode] = useState<TransportMode>('walking');
+  const [routePreview, setRoutePreview] = useState<RouteResult | null>(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        setCurrentLoc({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-      }, () => {
-        // ignore
-      }, { timeout: 5000, maximumAge: 60000 });
-    }
-  }, []);
+  const searchTimeout = useRef<number | null>(null);
+  // Tracks whether the input value change came from the user typing vs a programmatic update
+  // (e.g. when we call setDestination(place.name) after selecting a suggestion).
+  // Without this, selecting a suggestion re-opens the dropdown immediately.
+  const isUserTyping = useRef(false);
+  const { i18n } = useTranslation();
 
   const [selectedIds, setSelectedIds] = useState<(string | number)[]>(
     contacts.map((c) => c.id)
   );
 
+  // Fetch initial location for bias and routing
   useEffect(() => {
-    if (!destination.trim() || !showDropdown) {
+    defaultLocationProvider.getCurrentPosition()
+      .then((pos) => {
+        setCurrentLoc({ latitude: pos.latitude, longitude: pos.longitude });
+      })
+      .catch((err) => {
+        console.warn('[JourneySetup] Geolocation not immediately available:', err);
+      });
+  }, []);
+
+  // Debounced geocoding search using GeocodingProvider (Photon implementation)
+  useEffect(() => {
+    if (!destination.trim() || destination.trim().length < 3 || !showDropdown) {
       setSuggestions([]);
       return;
     }
@@ -46,24 +89,14 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
       clearTimeout(searchTimeout.current);
     }
 
-    searchTimeout.current = setTimeout(async () => {
+    searchTimeout.current = window.setTimeout(async () => {
       setIsSearching(true);
+      setErrorMsg('');
       try {
-        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(destination)}&format=json&addressdetails=1&limit=5&accept-language=${i18n.language}`;
-        if (currentLoc) {
-          // Create a ~50km viewbox around the user's location (0.5 degrees)
-          // viewbox format: <left>,<top>,<right>,<bottom> -> min_lon, max_lat, max_lon, min_lat
-          const minLon = currentLoc.lon - 0.5;
-          const maxLon = currentLoc.lon + 0.5;
-          const minLat = currentLoc.lat - 0.5;
-          const maxLat = currentLoc.lat + 0.5;
-          url += `&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1`;
-        }
-        const res = await fetch(url);
-        const data = await res.json();
-        setSuggestions(data);
+        const results = await defaultGeocodingProvider.search(destination, currentLoc);
+        setSuggestions(results);
       } catch (err) {
-        console.error('Failed to fetch locations', err);
+        console.error('Failed to search locations:', err);
       } finally {
         setIsSearching(false);
       }
@@ -72,11 +105,53 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
     return () => {
       if (searchTimeout.current) clearTimeout(searchTimeout.current);
     };
-  }, [destination, showDropdown]);
+  }, [destination, showDropdown, currentLoc]);
 
-  const handleSelectSuggestion = (placeName: string) => {
-    setDestination(placeName);
+  // When place is selected, compute real route preview
+  const handleSelectSuggestion = async (place: GeocodedPlace) => {
+    // Mark as programmatic update BEFORE calling setDestination so onChange doesn't re-open dropdown
+    isUserTyping.current = false;
+    setDestination(place.name);
+    setSelectedCoords([place.latitude, place.longitude]);
     setShowDropdown(false);
+    setSuggestions([]);
+    setErrorMsg('');
+
+    if (currentLoc) {
+      setLoadingRoute(true);
+      try {
+        const route = await defaultRoutingProvider.calculateRoute(
+          [currentLoc.latitude, currentLoc.longitude],
+          [place.latitude, place.longitude],
+          transportMode
+        );
+        setRoutePreview(route);
+      } catch (err) {
+        console.warn('Failed to calculate preview route:', err);
+      } finally {
+        setLoadingRoute(false);
+      }
+    }
+  };
+
+  // Re-calculate route when transport mode toggles
+  const handleModeChange = async (mode: TransportMode) => {
+    setTransportMode(mode);
+    if (currentLoc && selectedCoords) {
+      setLoadingRoute(true);
+      try {
+        const route = await defaultRoutingProvider.calculateRoute(
+          [currentLoc.latitude, currentLoc.longitude],
+          selectedCoords,
+          mode
+        );
+        setRoutePreview(route);
+      } catch (err) {
+        console.warn('Failed to calculate preview route for mode:', err);
+      } finally {
+        setLoadingRoute(false);
+      }
+    }
   };
 
   const toggleContact = (id: string | number) => {
@@ -87,8 +162,28 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!destination.trim()) return;
-    startJourney(destination.trim(), selectedIds);
+    if (!destination.trim()) {
+      setErrorMsg('Please enter a destination.');
+      return;
+    }
+
+    if (!selectedCoords) {
+      // Fallback: If user entered free text without clicking suggestion, use default offset or search top result
+      if (suggestions.length > 0) {
+        handleSelectSuggestion(suggestions[0]);
+        return;
+      }
+      setErrorMsg('Please select a verified location from the suggestions.');
+      return;
+    }
+
+    startJourney(
+      destination.trim(),
+      selectedCoords,
+      selectedIds,
+      transportMode,
+      routePreview
+    );
   };
 
   return (
@@ -97,72 +192,61 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
         <div className="sheet-handle" />
         <div className="sheet-title">
           <div>
-            <p>Journey Tracking</p>
-            <h2>Start a Journey</h2>
+            <p>Personal Safety Tracking</p>
+            <h2>Start Safe Journey</h2>
           </div>
           <button type="button" onClick={close} aria-label="Close">
             <X />
           </button>
         </div>
 
+        {errorMsg && (
+          <div className="journey-error-banner" style={{ color: '#dc2626', background: '#fee2e2', padding: '8px 12px', borderRadius: '8px', fontSize: '12px', marginBottom: '10px' }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* ── Destination Input ── */}
         <label>
           Destination Name
           <div className="input-with-icon" style={{ position: 'relative' }}>
             <input
               value={destination}
+              onInput={() => { isUserTyping.current = true; }}
               onChange={(e) => {
                 setDestination(e.target.value);
-                setShowDropdown(true);
+                // Only open dropdown when the user is actively typing,
+                // not when we programmatically set the value after selection.
+                if (isUserTyping.current) {
+                  setShowDropdown(true);
+                  setSelectedCoords(null); // Clear coords when user edits manually
+                }
               }}
               onFocus={() => {
-                if (destination.trim()) setShowDropdown(true);
+                if (destination.trim() && !selectedCoords) setShowDropdown(true);
               }}
-              placeholder="e.g. Home, Indiranagar Office, Koramangala 5th Block"
-              required
+              placeholder="e.g. Indiranagar, Tech Park, Metro Station"
+              autoComplete="off"
             />
             {isSearching && (
-              <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#64748b' }}>
-                Searching...
-              </div>
+              <span className="input-icon-right" style={{ right: '12px' }}>
+                <Loader2 className="animate-spin" size={16} />
+              </span>
             )}
-            
+
+            {/* Suggestions Dropdown */}
             {showDropdown && suggestions.length > 0 && (
-              <ul style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                left: 0,
-                right: 0,
-                background: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                listStyle: 'none',
-                padding: '4px 0',
-                margin: 0,
-                zIndex: 10,
-                maxHeight: '200px',
-                overflowY: 'auto'
-              }}>
-                {suggestions.map((s, idx) => (
-                  <li 
-                    key={idx}
-                    onClick={() => handleSelectSuggestion(s.display_name)}
-                    style={{
-                      padding: '10px 14px',
-                      cursor: 'pointer',
-                      borderBottom: idx < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
-                      fontSize: '13px',
-                      lineHeight: '1.4',
-                      color: '#334155'
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+              <ul className="journey-search-suggestions">
+                {suggestions.map((item) => (
+                  <li
+                    key={item.id}
+                    onClick={() => handleSelectSuggestion(item)}
+                    className="suggestion-item"
                   >
-                    <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '2px' }}>
-                      {s.name || s.display_name.split(',')[0]}
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {s.display_name}
+                    <MapPin size={15} style={{ flexShrink: 0, marginTop: '2px', color: '#6366f1' }} />
+                    <div>
+                      <strong>{item.name}</strong>
+                      <small>{item.displayName}</small>
                     </div>
                   </li>
                 ))}
@@ -171,61 +255,152 @@ export const JourneySetupModal: React.FC<JourneySetupModalProps> = ({
           </div>
         </label>
 
-        <div className="viewers-selection">
-          <p className="field-label" style={{ fontSize: '12px', fontWeight: 700, margin: '12px 0 6px' }}>
-            Who can watch this journey?
-          </p>
-          <div className="contact-picker-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {contacts.map((contact) => {
-              const isSelected = selectedIds.includes(contact.id);
-              return (
-                <button
-                  type="button"
-                  key={contact.id}
-                  className={`contact-pick-row ${isSelected ? 'selected' : ''}`}
-                  onClick={() => toggleContact(contact.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    border: isSelected ? '2px solid #6c63f2' : '1px solid #e2e8f0',
-                    background: isSelected ? '#f0eeff' : '#ffffff',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span
-                      style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: contact.color,
-                        color: '#fff',
-                        display: 'grid',
-                        placeItems: 'center',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {contact.initials}
-                    </span>
-                    <span style={{ fontSize: '13px', fontWeight: 600 }}>{contact.name}</span>
-                  </div>
-                  {isSelected && <Check size={16} color="#6c63f2" />}
-                </button>
-              );
-            })}
+        {/* ── Transport Mode Picker ── */}
+        <div className="journey-mode-picker-container" style={{ marginTop: '12px', marginBottom: '14px' }}>
+          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-dim, #64748b)', display: 'block', marginBottom: '6px' }}>
+            Travel Mode
+          </span>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => handleModeChange('walking')}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: transportMode === 'walking' ? '1.5px solid #6366f1' : '1px solid var(--border-subtle, #e2e8f0)',
+                background: transportMode === 'walking' ? '#ede9fe' : 'transparent',
+                color: transportMode === 'walking' ? '#6366f1' : 'inherit',
+                fontSize: '12px',
+                fontWeight: transportMode === 'walking' ? 700 : 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <Footprints size={15} /> Walking
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleModeChange('driving')}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: transportMode === 'driving' ? '1.5px solid #6366f1' : '1px solid var(--border-subtle, #e2e8f0)',
+                background: transportMode === 'driving' ? '#ede9fe' : 'transparent',
+                color: transportMode === 'driving' ? '#6366f1' : 'inherit',
+                fontSize: '12px',
+                fontWeight: transportMode === 'driving' ? 700 : 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <Car size={15} /> Driving
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleModeChange('cycling')}
+              style={{
+                flex: 1,
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: transportMode === 'cycling' ? '1.5px solid #6366f1' : '1px solid var(--border-subtle, #e2e8f0)',
+                background: transportMode === 'cycling' ? '#ede9fe' : 'transparent',
+                color: transportMode === 'cycling' ? '#6366f1' : 'inherit',
+                fontSize: '12px',
+                fontWeight: transportMode === 'cycling' ? 700 : 500,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              <Bike size={15} /> Cycling
+            </button>
           </div>
         </div>
 
-        <p className="form-foot" style={{ margin: '14px 0', fontSize: '11px', color: '#64748b' }}>
-          🔒 Selected contacts receive a secure live tracking link. Pause or end your journey anytime.
-        </p>
+        {/* ── Route Preview (ETA & Distance) ── */}
+        {loadingRoute && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11.5px', color: '#6366f1', margin: '8px 0' }}>
+            <Loader2 className="animate-spin" size={14} />
+            <span>Calculating optimal road route...</span>
+          </div>
+        )}
 
-        <button className="primary" type="submit" disabled={!destination.trim()}>
-          <Navigation size={16} /> Start Sharing Journey
-        </button>
+        {routePreview && !loadingRoute && (
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', display: 'flex', justifyContent: 'space-around' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#6366f1' }}>
+                {formatDuration(routePreview.durationSeconds)}
+              </div>
+              <small style={{ fontSize: '10px', color: '#64748b' }}>Estimated ETA</small>
+            </div>
+            <div style={{ width: '1px', background: '#ddd6fe' }} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#6366f1' }}>
+                {(routePreview.distanceMeters / 1000).toFixed(1)} km
+              </div>
+              <small style={{ fontSize: '10px', color: '#64748b' }}>Road Distance</small>
+            </div>
+          </div>
+        )}
+
+        {/* ── Emergency Contacts Multi-select ── */}
+        <p className="field-label" style={{ marginTop: '10px', marginBottom: '6px' }}>
+          Share Live Tracking With:
+        </p>
+        <div className="contact-checkbox-list" style={{ maxHeight: '160px', overflowY: 'auto' }}>
+          {contacts.length === 0 ? (
+            <p className="empty-hint" style={{ fontSize: '12px', color: 'var(--text-dim, #64748b)' }}>
+              No emergency contacts added yet. You can still start your tracked journey.
+            </p>
+          ) : (
+            contacts.map((c) => {
+              const checked = selectedIds.includes(c.id);
+              return (
+                <div
+                  key={c.id}
+                  className={`contact-check-item ${checked ? 'selected' : ''}`}
+                  onClick={() => toggleContact(c.id)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: '8px', marginBottom: '6px', background: checked ? 'var(--bg-card, #f8fafc)' : 'transparent', border: checked ? '1px solid #c4b5fd' : '1px solid var(--border-subtle, #e2e8f0)', cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#6366f1', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700 }}>
+                      {c.initials || c.name[0]}
+                    </div>
+                    <div>
+                      <b style={{ fontSize: '12px', display: 'block' }}>{c.name}</b>
+                      <small style={{ fontSize: '10px', color: 'var(--text-dim, #64748b)' }}>{c.relation || 'Contact'}</small>
+                    </div>
+                  </div>
+                  <div
+                    className={`checkbox-circle ${checked ? 'checked' : ''}`}
+                    style={{ width: '18px', height: '18px', borderRadius: '50%', border: checked ? 'none' : '1.5px solid #cbd5e1', background: checked ? '#6366f1' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}
+                  >
+                    {checked && <Check size={12} strokeWidth={3} />}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ── Submit Action ── */}
+        <div className="sheet-actions" style={{ marginTop: '16px' }}>
+          <button type="submit" className="btn-primary" style={{ width: '100%', padding: '12px', borderRadius: '10px', fontWeight: 700, fontSize: '14px', background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <Navigation size={17} /> Start Safe Journey
+          </button>
+        </div>
       </form>
     </div>
   );

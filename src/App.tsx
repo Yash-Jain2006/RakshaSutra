@@ -19,6 +19,7 @@ import {
 } from './services/safetyService.ts';
 import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } from './types/models';
 import { startLiveJourney, updateLiveJourney, updateLiveJourneyLocation, getCurrentJourney } from './services/journeyService';
+import { defaultRoutingProvider } from './services/providers/routingProvider';
 
 import { AdminPanel } from './components/admin/AdminPanel';
 import { AuthScreen, LoadingScreen } from './components/auth/AuthScreen';
@@ -27,6 +28,9 @@ import { ContactsScreen } from './components/contacts/ContactsScreen';
 import { FakeCall } from './components/fake-call/FakeCall';
 import { HomeScreen } from './components/home/HomeScreen';
 import { JourneySetupModal } from './components/journey/JourneySetupModal';
+import { JourneyScreen } from './components/journey/JourneyScreen';
+import { activeJourneyEngine } from './services/journeyEngine';
+import { defaultLocationProvider } from './services/providers/locationProvider';
 import { BottomNav } from './components/layout/BottomNav';
 import { Brand } from './components/layout/Brand';
 import { MapPage } from './components/map/MapPage';
@@ -127,6 +131,7 @@ export function App() {
   const [user, setUser] = useState<{ id: string; email?: string; user_metadata?: { display_name?: string } } | null>(null);
   const [activeSosEventId, setActiveSosEventId] = useState<string | null>(null);
   const [activeJourneyId, setActiveJourneyId] = useState<string | null>(null);
+  const [activeShareUrl, setActiveShareUrl] = useState<string>('');
   const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
   const [notifications, setNotifications] = useState(() => localStorage.getItem('notifications') !== 'false');
   const [record, setRecord] = useState(() => localStorage.getItem('record') === 'true');
@@ -791,6 +796,34 @@ export function App() {
               nav={nav}
               notify={notify}
               onStartFakeCall={() => setFakeCall(true)}
+              onOpenJourneyScreen={() => setPage('journey')}
+            />
+          )}
+
+          {page === 'journey' && (
+            <JourneyScreen
+              nav={nav}
+              contacts={contacts.filter((c) => activeJourneyContactIds.includes(c.id))}
+              userId={user?.id}
+              onTriggerFakeCall={() => setFakeCall(true)}
+              onTriggerSos={sendSOS}
+              onEndJourney={() => {
+                setJourney(false);
+                const trackingLink = activeShareUrl || `${window.location.origin}/track/${user?.id || 'demo'}`;
+                if (journeyDestination) {
+                  dispatchJourney(journeyDestination, activeJourneyContactIds, trackingLink, 'arrived').catch(console.error);
+                }
+                if (activeJourneyId) {
+                  updateLiveJourney(activeJourneyId, 'arrived').catch(console.error);
+                }
+                setJourneyDestination('');
+                setActiveJourneyId(null);
+                setActiveJourneyContactIds([]);
+                setActiveShareUrl('');
+                setPage('home');
+                notify('You have arrived safely. Tracking stopped.');
+              }}
+              shareUrl={activeShareUrl}
             />
           )}
 
@@ -896,7 +929,7 @@ export function App() {
             <AdminPanel nav={nav} notify={notify} />
           )}
 
-          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support-about', 'support-supports', 'fake-call-config', 'helplines'].includes(page) && (
+          {!['home', 'map', 'rakshak', 'community', 'settings', 'admin', 'privacy', 'support-about', 'support-supports', 'fake-call-config', 'helplines', 'journey'].includes(page) && (
             <NotFoundPage nav={nav} />
           )}
 
@@ -928,33 +961,82 @@ export function App() {
           elapsed={sosTime}
           cancel={cancelSOS}
           deliveries={deliveries}
-
           isOffline={!navigator.onLine}
         />
       )}
-
-      {fakeCall && <FakeCall close={() => setFakeCall(false)} />}
 
       {showJourneySetup && (
         <JourneySetupModal
           contacts={contacts}
           close={() => setShowJourneySetup(false)}
-          startJourney={(dest, selectedContactIds) => {
+          startJourney={async (dest, destCoords, selectedContactIds, transportMode, routePreview) => {
             setJourneyDestination(dest);
             setActiveJourneyContactIds(selectedContactIds);
             setJourney(true);
             setShowJourneySetup(false);
 
-            if (user?.id) {
-              startLiveJourney(user.id, dest, selectedContactIds)
-                .then(j => setActiveJourneyId(j.id))
-                .catch(err => console.error("Failed to start live journey in DB", err));
+            let pos = null;
+            try {
+              pos = await defaultLocationProvider.getCurrentPosition();
+            } catch (gpsErr) {
+              console.warn("Could not get initial GPS for journey engine:", gpsErr);
             }
 
-            const trackingLink = `${window.location.origin}/track/${user?.id || 'demo'}`;
+            // Ensure route is computed for road following
+            let activeRoute = routePreview;
+            if (!activeRoute && pos) {
+              try {
+                activeRoute = await defaultRoutingProvider.calculateRoute(
+                  [pos.latitude, pos.longitude],
+                  destCoords,
+                  transportMode
+                );
+              } catch (e) {
+                console.warn("Route calculation fallback:", e);
+              }
+            }
+
+            let createdJourney: any = null;
+            if (user?.id) {
+              try {
+                createdJourney = await startLiveJourney(
+                  user.id,
+                  dest,
+                  destCoords,
+                  selectedContactIds,
+                  transportMode,
+                  activeRoute,
+                  pos
+                );
+                setActiveJourneyId(createdJourney.id);
+                if (createdJourney.shareUrl) {
+                  setActiveShareUrl(createdJourney.shareUrl);
+                }
+              } catch (err) {
+                console.error("Failed to start live journey in DB:", err);
+              }
+            }
+
+            if (pos) {
+              try {
+                await activeJourneyEngine.startJourney({
+                  journeyId: createdJourney?.id || `journey-${Date.now()}`,
+                  destinationName: dest,
+                  destinationCoords: destCoords,
+                  startLocation: pos,
+                  transportMode,
+                  initialRoute: activeRoute,
+                  activeViewersCount: selectedContactIds.length,
+                });
+              } catch (engineErr) {
+                console.warn("Failed to start activeJourneyEngine:", engineErr);
+              }
+            }
+
+            const trackingLink = createdJourney?.shareUrl || `${window.location.origin}/track/${user?.id || 'demo'}`;
             
             dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
-              console.error("Failed to dispatch journey emails:", err);
+              console.error("Failed to dispatch journey notifications:", err);
             });
 
             if (activeSosEventId) {
@@ -966,7 +1048,8 @@ export function App() {
             const notifiedCount = selectedContacts.length;
             const shortDest = dest.split(',')[0].trim();
 
-            notify(`Journey to ${shortDest} started. Link sent to ${notifiedCount} contact${notifiedCount === 1 ? '' : 's'}.`);
+            notify(`Safe journey to ${shortDest} started.`);
+            setPage('journey');
           }}
         />
       )}
