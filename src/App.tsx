@@ -21,6 +21,8 @@ import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } f
 import { startLiveJourney, updateLiveJourney, getCurrentJourney } from './services/journeyService';
 import { defaultRoutingProvider } from './services/providers/routingProvider';
 
+import i18n from './i18n/config';
+
 import { AdminPanel } from './components/admin/AdminPanel';
 import { AuthScreen, LoadingScreen } from './components/auth/AuthScreen';
 import { CommunityPage } from './components/community/CommunityPage';
@@ -612,9 +614,10 @@ export function App() {
       async (pos) => {
         try {
           const { latitude, longitude } = pos.coords;
+          const currentLang = i18n.language || 'en';
           const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
-            { headers: { 'Accept-Language': 'en' } }
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=${currentLang}`,
+            { headers: { 'Accept-Language': currentLang } }
           );
           const json = await res.json();
           const address = json.address || {};

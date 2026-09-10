@@ -8,6 +8,8 @@ export interface GeocodedPlace {
   state?: string;
 }
 
+import i18n from '../../i18n/config';
+
 export interface GeocodingProvider {
   search(
     query: string,
@@ -48,7 +50,8 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
     }
 
     try {
-      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&limit=6`;
+      const currentLang = i18n.language || 'en';
+      let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&limit=6&lang=${currentLang}`;
       if (userLocation) {
         url += `&lat=${userLocation.latitude}&lon=${userLocation.longitude}`;
       }
@@ -107,7 +110,8 @@ export class PhotonGeocodingProvider implements GeocodingProvider {
 
   async reverse(latitude: number, longitude: number): Promise<GeocodedPlace | null> {
     try {
-      const url = `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`;
+      const currentLang = i18n.language || 'en';
+      const url = `https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}&lang=${currentLang}`;
       const res = await fetch(url);
       if (!res.ok) return null;
 

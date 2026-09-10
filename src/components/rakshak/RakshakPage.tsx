@@ -11,7 +11,7 @@ interface RakshakComplaintFormProps {
 }
 
 export const RakshakComplaintForm: React.FC<RakshakComplaintFormProps> = ({ close, submit, rakshaks }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [rakshakId, setRakshakId] = useState(String(rakshaks[0]?.id || '1'));
   const [description, setDescription] = useState('');
 
@@ -87,7 +87,7 @@ import { useEffect, useMemo, useRef } from 'react';
 // ... (keep RakshakComplaintForm as is)
 
 export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplaint, userId, rakshaks }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [apply, setApply] = useState(false);
   const [complaint, setComplaint] = useState(false);
   const [editArea, setEditArea] = useState(false);
@@ -126,7 +126,8 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     searchTimeout.current = window.setTimeout(async () => {
       setIsSearching(true);
       try {
-        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newArea)}&format=json&addressdetails=1&limit=5`;
+        const currentLang = i18n.language || 'en';
+        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newArea)}&format=json&addressdetails=1&limit=5&accept-language=${currentLang}`;
         if (userLoc) {
           const minLon = userLoc.lng - 0.5;
           const maxLon = userLoc.lng + 0.5;

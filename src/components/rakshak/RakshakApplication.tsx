@@ -13,7 +13,7 @@ interface RakshakApplicationProps {
 }
 
 export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, finish, userId, nav, notify }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [docType, setDocType] = useState<'Aadhaar' | 'PAN Card' | 'Driving Licence'>('Aadhaar');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
@@ -49,7 +49,8 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
     searchTimeout.current = window.setTimeout(async () => {
       setIsSearching(true);
       try {
-        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(area)}&format=json&addressdetails=1&limit=5`;
+        const currentLang = i18n.language || 'en';
+        let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(area)}&format=json&addressdetails=1&limit=5&accept-language=${currentLang}`;
         if (appLoc) {
           const minLon = appLoc.lng - 0.5;
           const maxLon = appLoc.lng + 0.5;
@@ -87,7 +88,7 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
             coverage_area: area, 
             status: 'pending', 
             submitted_at: new Date().toISOString()
-          })
+          }, { onConflict: 'user_id' })
           .select('id')
           .single();
         if (error) throw error;
