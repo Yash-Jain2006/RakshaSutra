@@ -18,7 +18,7 @@ import {
   updateSosLocation,
 } from './services/safetyService.ts';
 import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } from './types/models';
-import { startLiveJourney, updateLiveJourney, updateLiveJourneyLocation, getCurrentJourney } from './services/journeyService';
+import { startLiveJourney, updateLiveJourney, getCurrentJourney } from './services/journeyService';
 import { defaultRoutingProvider } from './services/providers/routingProvider';
 
 import { AdminPanel } from './components/admin/AdminPanel';
@@ -222,9 +222,8 @@ export function App() {
         if (sos && activeSosEventId) {
           updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => {});
         }
-        if (journey && activeJourneyId) {
-          updateLiveJourneyLocation(activeJourneyId, lat, lng, accuracy).catch(() => {});
-        }
+        // NOTE: Journey location syncing is now exclusively handled by JourneyEngine.
+        // App.tsx no longer calls updateLiveJourneyLocation to prevent overwriting ETA/Distance with 0.
       },
       (error) => console.error("Location tracking error", error),
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
