@@ -7,6 +7,7 @@ import {
   Bike,
   Car,
   CheckCircle2,
+  Clock,
   Footprints,
   Info,
   Loader2,
@@ -18,7 +19,7 @@ import {
 import { Brand } from '../layout/Brand';
 import { createMapTileLayer } from '../../services/providers/mapProvider';
 import { getLocationFreshness, type FreshnessState } from '../../utils/freshness';
-import { defaultRoutingProvider, type RouteResult } from '../../services/providers/routingProvider';
+import { defaultRoutingProvider, haversineDistanceMeters, type RouteResult } from '../../services/providers/routingProvider';
 
 // Fix Leaflet default icon path issue with bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -54,8 +55,11 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [viewerLocation, setViewerLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [calculatedRoute, setCalculatedRoute] = useState<RouteResult | null>(null);
+  const [calculatingRoute, setCalculatingRoute] = useState(false);
   const routeCalculatedRef = useRef(false);
   const hasFittedBoundsRef = useRef(false);
+  // Track last recalc position to avoid recalculating when user hasn't moved
+  const lastRouteFromRef = useRef<string | null>(null);
 
   // Freshness is computed from data.last_location_at and drives adaptive polling.
   // Both JourneyScreen (tracker) and PublicTrackingPage (viewer) use the same
@@ -184,20 +188,19 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     };
   }, [trackingId]);
 
-  // Dynamic road route resolution if route_geojson was missing from database
+  // Dynamic road route resolution – recalculates on every position update for journey mode
   useEffect(() => {
     if (!data || !data.latitude || !data.longitude) return;
 
     const isSos = data.status === 'sos' || data.type === 'sos';
 
     if (!isSos) {
-      if (
-        (!data.route_geojson || !data.route_geojson.coordinates || data.route_geojson.coordinates.length < 2) &&
-        data.destination_latitude &&
-        data.destination_longitude &&
-        !routeCalculatedRef.current
-      ) {
-        routeCalculatedRef.current = true;
+      // Journey mode: recalculate whenever position changes (up to 20m movement)
+      if (data.destination_latitude && data.destination_longitude) {
+        const posKey = `${data.latitude.toFixed(4)},${data.longitude.toFixed(4)}`;
+        if (lastRouteFromRef.current === posKey) return; // same position, skip
+        lastRouteFromRef.current = posKey;
+        setCalculatingRoute(true);
         defaultRoutingProvider
           .calculateRoute(
             [data.latitude, data.longitude],
@@ -208,8 +211,9 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
             setCalculatedRoute(res);
           })
           .catch((err) => {
-            console.warn('[PublicTracking] Road route calculation fallback error:', err);
-          });
+            console.warn('[PublicTracking] Road route calculation error:', err);
+          })
+          .finally(() => setCalculatingRoute(false));
       }
     } else if (isSos && viewerLocation && !routeCalculatedRef.current) {
       routeCalculatedRef.current = true;
@@ -232,7 +236,6 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     data?.latitude,
     data?.longitude,
     data?.transport_mode,
-    data?.route_geojson,
     data?.status,
     data?.type,
     viewerLocation
@@ -439,27 +442,39 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   const isSos = data.status === 'sos' || data.type === 'sos';
   const isArrived = data.status === 'arrived';
   // If SOS, we want the distance/ETA between Viewer and User, NOT the User's Journey ETA
-  const effectiveEtaSeconds = isSos 
+  let effectiveEtaSeconds = isSos 
     ? (calculatedRoute?.durationSeconds ?? null)
-    : (data.eta_seconds ?? calculatedRoute?.durationSeconds ?? null);
+    : (calculatedRoute?.durationSeconds ?? data.eta_seconds ?? null);
 
   let effectiveDistanceMeters = isSos
     ? (calculatedRoute?.distanceMeters ?? null)
-    : (data.remaining_distance_meters ?? calculatedRoute?.distanceMeters ?? null);
+    : (calculatedRoute?.distanceMeters ?? data.remaining_distance_meters ?? null);
 
   // Fallback to live straight-line distance for SOS if OSRM route is missing/pending
   if (isSos && viewerLocation && !effectiveDistanceMeters) {
     const R = 6371e3; // metres
     const lat1 = viewerLocation.lat * Math.PI/180;
-    const lat2 = data.latitude * Math.PI/180;
-    const dLat = (data.latitude - viewerLocation.lat) * Math.PI/180;
-    const dLon = (data.longitude - viewerLocation.lng) * Math.PI/180;
+    const lat2 = (data.latitude as number) * Math.PI/180;
+    const dLat = ((data.latitude as number) - viewerLocation.lat) * Math.PI/180;
+    const dLon = ((data.longitude as number) - viewerLocation.lng) * Math.PI/180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     effectiveDistanceMeters = R * c;
   }
 
+  // Fallback to straight-line distance with speed factor for Journey if road route is pending/missing
+  if (!isSos && !effectiveDistanceMeters && data.latitude && data.longitude && data.destination_latitude && data.destination_longitude) {
+    const straightDist = haversineDistanceMeters(data.latitude, data.longitude, data.destination_latitude, data.destination_longitude);
+    effectiveDistanceMeters = Math.round(straightDist * 1.35); // 1.35x road tortuosity
+    const speedMps = data.transport_mode === 'driving' ? 11.1 : data.transport_mode === 'cycling' ? 4.2 : 1.38;
+    if (!effectiveEtaSeconds) {
+      effectiveEtaSeconds = Math.round(effectiveDistanceMeters / speedMps);
+    }
+  }
+
   const distKm = effectiveDistanceMeters ? (effectiveDistanceMeters / 1000).toFixed(1) : null;
+  const etaDisplay = calculatingRoute && !isSos && !effectiveEtaSeconds ? 'Calculating…' : formatEtaDuration(effectiveEtaSeconds);
+  const distDisplay = calculatingRoute && !isSos && !distKm ? 'Calculating…' : (distKm ? `${distKm} km` : '—');
 
   return (
     <div className="public-tracking-container" style={{ position: 'relative', height: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
@@ -488,6 +503,24 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
             <span>Heading to <strong>{data.destination_name}</strong></span>
           </div>
         )}
+
+        {/* Prominent Estimated Arrival Callout for Viewer */}
+        {!isArrived && !isSos && (
+          <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#15803d', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Clock size={14} color="#16a34a" />
+              Reaching in:
+            </span>
+            <span style={{ fontSize: '13px', fontWeight: 800, color: '#166534' }}>
+              {etaDisplay !== '—' ? `~${etaDisplay}` : calculatingRoute ? 'Calculating…' : 'En route'}
+              {distDisplay !== '—' && (
+                <span style={{ fontSize: '11px', fontWeight: 600, color: '#15803d', marginLeft: '6px' }}>
+                  ({distDisplay})
+                </span>
+              )}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── Emergency SOS Alert Banner if Active ── */}
@@ -514,6 +547,8 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
               ? 'Emergency Alert Active'
               : isArrived
               ? 'Arrived safely at destination'
+              : etaDisplay !== '—'
+              ? `Reaching in ~${etaDisplay} · Safe so far`
               : 'Journey in progress · Safe so far'}
           </span>
         </div>
@@ -522,7 +557,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
           <div>
             <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-              {formatEtaDuration(effectiveEtaSeconds)}
+              {etaDisplay}
             </span>
             <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>ETA</small>
           </div>
@@ -531,7 +566,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
           <div>
             <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-              {distKm ? `${distKm} km` : '—'}
+              {distDisplay}
             </span>
             <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance</small>
           </div>

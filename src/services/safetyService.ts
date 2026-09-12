@@ -164,12 +164,15 @@ export async function dispatchJourney(
   destination: string, 
   contactIds: (string | number)[], 
   trackingLink: string, 
-  status: 'started' | 'arrived' = 'started'
+  status: 'started' | 'arrived' = 'started',
+  etaSeconds?: number | null,
+  distanceMeters?: number | null,
+  transportMode?: string
 ) {
   const { data, error } = await configuredClient().functions.invoke(
     "dispatch-journey",
     {
-      body: { destination, contactIds, trackingLink, status },
+      body: { destination, contactIds, trackingLink, status, etaSeconds, distanceMeters, transportMode },
     },
   );
   if (error) throw error;

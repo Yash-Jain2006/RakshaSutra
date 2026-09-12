@@ -1039,7 +1039,15 @@ export function App() {
 
             const trackingLink = createdJourney?.shareUrl || `${window.location.origin}/track/${user?.id || 'demo'}`;
 
-            dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
+            dispatchJourney(
+              dest,
+              selectedContactIds,
+              trackingLink,
+              'started',
+              activeRoute?.durationSeconds,
+              activeRoute?.distanceMeters,
+              transportMode
+            ).catch(err => {
               console.error("Failed to dispatch journey notifications:", err);
             });
 
