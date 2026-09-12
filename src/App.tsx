@@ -189,7 +189,7 @@ export function App() {
         if ('wakeLock' in navigator) {
           try {
             if (wakeLockRef.current) {
-              wakeLockRef.current.release().catch(() => {});
+              wakeLockRef.current.release().catch(() => { });
             }
             wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
             console.log("Wake Lock re-acquired");
@@ -208,21 +208,21 @@ export function App() {
   useEffect(() => {
     if ((!sos && !journey) || !navigator.geolocation) return;
     if (!activeSosEventId && !activeJourneyId) return;
-    
+
     // Start real-time tracking when SOS or Journey is active
     watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
         const accuracy = position.coords.accuracy;
-        
+
         // Aggressively cache valid locations as fallback
         localStorage.setItem('lastLocationLat', lat.toString());
         localStorage.setItem('lastLocationLng', lng.toString());
 
         // Sync with backend
         if (sos && activeSosEventId) {
-          updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => {});
+          updateSosLocation(activeSosEventId, lat, lng, accuracy, 'precise').catch(() => { });
         }
         // NOTE: Journey location syncing is now exclusively handled by JourneyEngine.
         // App.tsx no longer calls updateLiveJourneyLocation to prevent overwriting ETA/Distance with 0.
@@ -317,13 +317,13 @@ export function App() {
         setPage('admin');
       }
       if (event === 'SIGNED_IN' && session?.user) {
-          getCurrentJourney(session.user.id).then((j) => {
-            if (j) {
-              setJourney(j.status === 'active' || j.status === 'paused');
-              setActiveJourneyId(j.id);
-              setJourneyDestination(j.destination);
-            }
-          }).catch(console.error);
+        getCurrentJourney(session.user.id).then((j) => {
+          if (j) {
+            setJourney(j.status === 'active' || j.status === 'paused');
+            setActiveJourneyId(j.id);
+            setJourneyDestination(j.destination);
+          }
+        }).catch(console.error);
       }
     });
 
@@ -341,7 +341,7 @@ export function App() {
     listEmergencyContacts()
       .then((remoteContacts) => mounted && setContacts(remoteContacts as EmergencyContact[]))
       .catch(() => mounted && notify('Could not load saved contacts. Showing local data.'));
-      
+
     return () => {
       mounted = false;
     };
@@ -404,18 +404,18 @@ export function App() {
     });
 
   const shareLocation = async () => {
-    await requestLocation();
-    
+    const loc = await requestLocation();
+
     if (!user) {
       notify('You must be signed in to share location.');
       return;
     }
-    
-    const trackingLink = `${window.location.origin}/track/${user.id}`;
-    
+
     try {
-      await dispatchLocationShare(trackingLink);
-      notify('Live location sent via WhatsApp/SMS to all contacts!');
+      const googleMapsLink = `https://maps.google.com/?q=${loc.latitude},${loc.longitude}`;
+      await dispatchLocationShare(googleMapsLink);
+      
+      notify('Current location sent via Email to all contacts!');
     } catch (err) {
       console.error('Failed to share location', err);
       notify('Failed to broadcast location.');
@@ -626,7 +626,7 @@ export function App() {
           const area = address.suburb || address.neighbourhood || address.village || address.residential || address.hamlet;
           const city = address.city || address.town || address.municipality || address.state_district;
           const state = address.state || address.state_code;
-          
+
           const parts = [];
           if (area) parts.push(area);
           if (city && city !== area) parts.push(city);
@@ -895,9 +895,9 @@ export function App() {
           )}
 
           {page === 'fake-call-config' && (
-            <FakeCallConfigPage 
-              nav={nav} 
-              callerName={fakeCallName} 
+            <FakeCallConfigPage
+              nav={nav}
+              callerName={fakeCallName}
               setCallerName={(name) => { setFakeCallName(name); localStorage.setItem('fakeCallName', name); }}
               callerRelation={fakeCallRelation}
               setCallerRelation={(relation) => { setFakeCallRelation(relation); localStorage.setItem('fakeCallRelation', relation); }}
@@ -951,10 +951,10 @@ export function App() {
       )}
 
       {fakeCall && (
-        <FakeCall 
-          close={() => setFakeCall(false)} 
-          callerName={fakeCallName} 
-          callerRelation={fakeCallRelation} 
+        <FakeCall
+          close={() => setFakeCall(false)}
+          callerName={fakeCallName}
+          callerRelation={fakeCallRelation}
           ringtone={fakeCallRingtone}
         />
       )}
@@ -1038,7 +1038,7 @@ export function App() {
             }
 
             const trackingLink = createdJourney?.shareUrl || `${window.location.origin}/track/${user?.id || 'demo'}`;
-            
+
             dispatchJourney(dest, selectedContactIds, trackingLink, 'started').catch(err => {
               console.error("Failed to dispatch journey notifications:", err);
             });

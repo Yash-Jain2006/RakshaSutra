@@ -246,7 +246,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <AlertTriangle size={19} />
           <span>{t('home.feeling_unsafe', 'Feeling Unsafe')}</span>
         </button>
-        <button className="assist" onClick={() => nav('support')}>
+        <button className="assist" onClick={() => nav('helplines')}>
           <CircleHelp size={19} />
           <span>{t('home.need_assistance', 'Need Assistance')}</span>
         </button>

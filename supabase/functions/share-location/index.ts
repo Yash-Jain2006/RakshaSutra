@@ -77,34 +77,51 @@ async function sendMsg91Sms(phoneE164: string, message: string) {
   }
 }
 
-async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
-  const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
 
-  if (!accountSid || !authToken || !fromPhone) {
+async function sendLocationEmail(to: string, trackingLink: string, userName: string, senderEmail: string) {
+  const apiKey = Deno.env.get('RESEND_API_KEY')
+  let from = Deno.env.get('RESEND_FROM_EMAIL') ?? Deno.env.get('CONFIRMATION_FROM_EMAIL') ?? 'safety@rakshasutra.in'
+  if (from.includes('rakshasutra.com')) from = from.replace('rakshasutra.com', 'rakshasutra.in')
+  if (!apiKey) {
+    console.warn('[Share Location] RESEND_API_KEY not set. Skipping email to', to)
     return false
   }
 
-  const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
-  const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
-
-  const formData = new URLSearchParams()
-  formData.append('To', toPhone)
-  formData.append('From', actualFromPhone)
-  formData.append('Body', message)
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
+      <div style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0;">
+        <img src="https://rakshasutra.in/logo.png" alt="Rakshasutra Logo" style="height: 80px; width: auto; margin-bottom: 10px;" />
+        <h1 style="color: #1e293b; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Rakshasutra</h1>
+      </div>
+      <h2 style="color: #0f172a; margin-top: 0;">📍 Current Location Shared</h2>
+      <p style="font-size: 16px; color: #334155; line-height: 1.5;"><strong>${senderEmail} (${userName})</strong> has shared their current location with you via Rakshasutra.</p>
+      <p style="font-size: 16px; color: #334155; margin-bottom: 24px;">Click the button below to view their location on Google Maps:</p>
+      <div style="text-align: center;">
+        <a href="${trackingLink}" style="display:inline-block; padding:14px 28px; background:#16a34a; color:#fff; text-decoration:none; border-radius:8px; font-weight:bold; font-size: 16px; box-shadow: 0 4px 6px rgba(22,163,74,0.2);">View Location</a>
+      </div>
+      <p style="font-size: 12px; color: #94a3b8; margin-top: 24px; text-align: center;">This message was sent automatically by Rakshasutra Safety Platform.</p>
+    </div>
+  `
 
   try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-      },
-      body: formData.toString(),
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to,
+        subject: `📍 ${userName} shared their live location with you`,
+        html,
+      }),
     })
-    return res.ok
+    if (!res.ok) {
+      console.error('[Share Location] Email failed:', res.status, await res.text())
+      return false
+    }
+    console.log('[Share Location] Email sent to', to)
+    return true
   } catch (e) {
+    console.error('[Share Location] Email network error:', e)
     return false
   }
 }
@@ -143,40 +160,42 @@ Deno.serve(async (request: Request) => {
 
   const userName = profile?.display_name || 'A Raksha Sutra user'
 
-  // Fetch all emergency contacts for this user securely
+  // Fetch all emergency contacts for this user securely (phone + email)
   const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
   const { data: contacts, error: contactError } = await admin
     .from('emergency_contacts')
-    .select('phone_e164')
+    .select('phone_e164, email')
     .eq('user_id', user.id)
-    .not('phone_e164', 'is', null)
 
   if (contactError) return json({ error: 'Failed to retrieve contacts' }, 500)
   
   if (!contacts || contacts.length === 0) {
-    return json({ message: 'No emergency contacts found with a phone number' }, 200)
+    return json({ message: 'No emergency contacts found' }, 200)
   }
 
-  const message = `📍 *LIVE LOCATION SHARED*\n\n*${userName}* has shared their live location with you.\n\nTrack their real-time location here: ${trackingLink}`
+  const message = `📍 *CURRENT LOCATION SHARED*\n\n*${userName}* has shared their current location with you.\n\nView their location here: ${trackingLink}`
 
   // Fire and forget sending to not block response
   const sendAlerts = async () => {
     try {
+      const sentEmails = new Set<string>()
       const promises = contacts.map(async (contact: any) => {
-        if (!contact.phone_e164) return;
-        
-        // 1. Try Meta WhatsApp Cloud API first
-        let sent = await sendMetaWhatsAppMessage(contact.phone_e164, message)
-        
-        // 2. Fallback to MSG91 Indian SMS
-        if (!sent) {
-          console.log(`[Share Location] WhatsApp not available for ${contact.phone_e164}. Attempting MSG91 SMS fallback...`)
-          sent = await sendMsg91Sms(contact.phone_e164, message)
+        // 1. Send email FIRST (highest deliverability, works without phone number)
+        if (contact.email && !sentEmails.has(contact.email)) {
+          sentEmails.add(contact.email)
+          await sendLocationEmail(contact.email, trackingLink, userName, user.email ?? '')
         }
 
-        // 3. Fallback to Twilio if configured
+        // 2. Then send WhatsApp/SMS for contacts with a phone number
+        if (!contact.phone_e164) return;
+
+        // Try Meta WhatsApp Cloud API
+        let sent = await sendMetaWhatsAppMessage(contact.phone_e164, message)
+
+        // Fallback to MSG91 Indian SMS
         if (!sent) {
-          await sendTwilioMessage(contact.phone_e164, message, false)
+          console.log(`[Share Location] WhatsApp not available for ${contact.phone_e164}. Attempting MSG91 SMS fallback...`)
+          await sendMsg91Sms(contact.phone_e164, message)
         }
       });
       await Promise.allSettled(promises);

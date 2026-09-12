@@ -30,7 +30,8 @@ function readPlatformKey(keysVariable: string, legacyVariable: string) {
 // -------------------------------------------------------------
 async function sendEmailAlert(to: string, locationLink: string, userName: string, userEmail: string) {
   const apiKey = Deno.env.get('RESEND_API_KEY')
-  const from = Deno.env.get('RESEND_FROM_EMAIL') ?? 'safety@rakshasutra.in'
+  let from = Deno.env.get('RESEND_FROM_EMAIL') ?? Deno.env.get('CONFIRMATION_FROM_EMAIL') ?? 'safety@rakshasutra.in'
+  if (from.includes('rakshasutra.com')) from = from.replace('rakshasutra.com', 'rakshasutra.in')
   if (!apiKey) {
     console.warn('RESEND_API_KEY not found. Skipping email to', to)
     return
@@ -219,41 +220,6 @@ async function sendMsg91Sms(phoneE164: string, userName: string, locationLink: s
   }
 }
 
-// -------------------------------------------------------------
-// Twilio Message (Legacy Fallback)
-// -------------------------------------------------------------
-async function sendTwilioMessage(phoneE164: string, message: string, useWhatsApp: boolean) {
-  const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
-  const fromPhone = Deno.env.get('TWILIO_WHATSAPP_NUMBER')
-
-  if (!accountSid || !authToken || !fromPhone) {
-    return false
-  }
-
-  const actualFromPhone = useWhatsApp ? fromPhone : fromPhone.replace('whatsapp:', '')
-  const toPhone = useWhatsApp ? `whatsapp:${phoneE164}` : phoneE164
-
-  const formData = new URLSearchParams()
-  formData.append('To', toPhone)
-  formData.append('From', actualFromPhone)
-  formData.append('Body', message)
-
-  try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-      },
-      body: formData.toString(),
-    })
-    return res.ok
-  } catch (e) {
-    console.error(`Twilio send error:`, e)
-    return false
-  }
-}
 
 // -------------------------------------------------------------
 // Main Handler
@@ -411,11 +377,6 @@ Deno.serve(async (request: Request) => {
               if (!success) {
                 console.log(`[Alert Dispatch] WhatsApp did not succeed for ${contact.phone_e164}. Falling back to MSG91 SMS...`)
                 success = await sendMsg91Sms(contact.phone_e164, userName, locationLink)
-              }
-
-              // 3. Legacy Fallback: Twilio (if configured)
-              if (!success) {
-                success = await sendTwilioMessage(contact.phone_e164, message, false)
               }
 
               await admin.from('sos_event_deliveries').update({
