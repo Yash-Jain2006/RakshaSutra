@@ -95,12 +95,12 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
         const documentType = docType === 'Aadhaar' ? 'aadhaar' : docType === 'PAN Card' ? 'pan' : 'driving_licence';
         const { data, error } = await supabase
           .from('rakshak_applications')
-          .upsert({ 
-            user_id: userId, 
-            document_type: documentType, 
-            full_name_as_id: fullName, 
-            coverage_area: area, 
-            status: 'pending', 
+          .upsert({
+            user_id: userId,
+            document_type: documentType,
+            full_name_as_id: fullName,
+            coverage_area: area,
+            status: 'pending',
             submitted_at: new Date().toISOString()
           }, { onConflict: 'user_id' })
           .select('id')
@@ -161,11 +161,11 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
           <label className="ref-rakshak-field">
             <span>{t('rakshak.coverage_area', 'Coverage Area')}</span>
             <div style={{ position: 'relative' }}>
-              <input 
-                value={area} 
-                onChange={(event) => { setArea(event.target.value); setShowDropdown(true); }} 
-                placeholder={t('rakshak.eg_area', 'e.g. HSR Layout, Bengaluru')} 
-                required 
+              <input
+                value={area}
+                onChange={(event) => { setArea(event.target.value); setShowDropdown(true); }}
+                placeholder={t('rakshak.eg_area', 'e.g. Gumasta Nagar,Indore')}
+                required
                 style={{ width: '100%' }}
               />
               {isSearching && (
@@ -215,34 +215,34 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
           </label>
 
           <div className="ref-upload-grid">
-            <UploadTile 
-              side="front" 
-              file={frontFile} 
-              setFile={setFrontFile} 
-              textStr={frontFile ? t('rakshak.front_uploaded', 'Front uploaded') : t('rakshak.upload_front', 'Upload Front Side')} 
+            <UploadTile
+              side="front"
+              file={frontFile}
+              setFile={setFrontFile}
+              textStr={frontFile ? t('rakshak.front_uploaded', 'Front uploaded') : t('rakshak.upload_front', 'Upload Front Side')}
             />
-            <UploadTile 
-              side="back" 
-              file={backFile} 
-              setFile={setBackFile} 
-              textStr={backFile ? t('rakshak.back_uploaded', 'Back uploaded') : t('rakshak.upload_back', 'Upload Back Side')} 
+            <UploadTile
+              side="back"
+              file={backFile}
+              setFile={setBackFile}
+              textStr={backFile ? t('rakshak.back_uploaded', 'Back uploaded') : t('rakshak.upload_back', 'Upload Back Side')}
             />
           </div>
           <div className="ref-rakshak-terms" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', marginBottom: '24px' }}>
             <input id="terms-checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" style={{ width: '20px', height: '20px', accentColor: 'var(--accent)' }} />
             <label htmlFor="terms-checkbox" style={{ fontSize: '13px', color: '#64748b', cursor: 'pointer' }}>
               I agree to{' '}
-              <button 
-                type="button" 
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('terms'); }} 
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('terms'); }}
                 style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
               >
                 Terms
               </button>
               {' '}&amp;{' '}
-              <button 
-                type="button" 
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('privacy'); }} 
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav?.('privacy'); }}
                 style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}
               >
                 Privacy Policy
@@ -250,7 +250,7 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
             </label>
           </div>
           <button className="ref-rakshak-submit" type="submit" disabled={submitting}>
-            {submitting 
+            {submitting
               ? (userId ? 'Submitting…' : t('rakshak.uploading', 'Submitting…'))
               : (userId ? 'Submit Application' : t('rakshak.next', 'Next'))
             }

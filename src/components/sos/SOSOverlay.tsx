@@ -42,7 +42,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   
   const [perms, setPerms] = useState({
     audio: false,
@@ -80,7 +80,15 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
 
     const shouldRecord = localStorage.getItem('auto_av_sos') === 'true';
     if (shouldRecord) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: true })
+      // Try back camera first; fall back to front if not available
+      const tryGetMedia = () =>
+        navigator.mediaDevices
+          .getUserMedia({ video: { facingMode: 'environment' }, audio: true })
+          .catch(() =>
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true })
+          );
+
+      tryGetMedia()
         .then((s) => {
           if (isCancelled) {
             s.getTracks().forEach(t => t.stop());
@@ -204,24 +212,8 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
           autoPlay
           muted
           playsInline
-          onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
-          title="Tap to flip camera"
-          style={{
-            position: 'absolute',
-            top: 64,
-            left: 20,
-            width: 72,
-            height: 72,
-            borderRadius: '50%',
-            objectFit: 'cover',
-            border: '3px solid #ff4444',
-            boxShadow: '0 4px 12px rgba(255,68,68,0.3)',
-            zIndex: 100,
-            cursor: 'pointer',
-            transition: 'transform 0.2s',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          style={{ display: 'none' }}
+          aria-hidden="true"
         />
       )}
 
