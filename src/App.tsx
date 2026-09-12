@@ -614,6 +614,8 @@ export function App() {
       async (pos) => {
         try {
           const { latitude, longitude } = pos.coords;
+          localStorage.setItem('lastLocationLat', latitude.toString());
+          localStorage.setItem('lastLocationLng', longitude.toString());
           const currentLang = i18n.language || 'en';
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=${currentLang}`,

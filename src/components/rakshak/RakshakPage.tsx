@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, LockKeyhole, MapPin, ShieldCheck, X, Check } from 'lucide-react';
+import { AlertTriangle, LockKeyhole, MapPin, ShieldCheck, X, Check, Star } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BackHeader } from '../layout/BackHeader';
 import { RakshakApplication } from './RakshakApplication';
@@ -95,6 +95,8 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   const [isUpdatingArea, setIsUpdatingArea] = useState(false);
   
   const [userLoc, setUserLoc] = useState<{ lat: number, lng: number } | null>(null);
+  const [areaLoc, setAreaLoc] = useState<{ lat: number, lng: number } | null>(null);
+  const [roadDistances, setRoadDistances] = useState<Record<string, number>>({});
   const [showAll, setShowAll] = useState(false);
 
   const currentUserRakshak = useMemo(() => {
@@ -102,6 +104,13 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   }, [rakshaks, userId]);
 
   useEffect(() => {
+    // Immediate fallback using aggressively cached background location
+    const cachedLat = localStorage.getItem('lastLocationLat');
+    const cachedLng = localStorage.getItem('lastLocationLng');
+    if (cachedLat && cachedLng) {
+      setUserLoc({ lat: parseFloat(cachedLat), lng: parseFloat(cachedLng) });
+    }
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -109,6 +118,41 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
       );
     }
   }, []);
+
+  // Fetch real road distances via OSRM whenever user location or rakshak list changes
+  useEffect(() => {
+    if (!userLoc) return;
+    const candidates = rakshaks.filter(r => r.latitude && r.longitude);
+    if (candidates.length === 0) return;
+
+    let cancelled = false;
+    const fetchRoadDistances = async () => {
+      const results: Record<string, number> = {};
+      await Promise.all(
+        candidates.map(async (r) => {
+          try {
+            const url =
+              `https://router.project-osrm.org/route/v1/driving/` +
+              `${userLoc.lng},${userLoc.lat};${r.longitude},${r.latitude}` +
+              `?overview=false&geometries=polyline`;
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const data = await res.json();
+            const meters = data?.routes?.[0]?.distance;
+            if (typeof meters === 'number') {
+              results[r.id] = meters / 1000; // convert to km
+            }
+          } catch {
+            // silently ignore – haversine fallback is still shown
+          }
+        })
+      );
+      if (!cancelled) setRoadDistances(results);
+    };
+
+    fetchRoadDistances();
+    return () => { cancelled = true; };
+  }, [userLoc, rakshaks]);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -155,7 +199,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     if (!userId || !newArea.trim()) return;
     setIsUpdatingArea(true);
     try {
-      await updateRakshakArea(userId, newArea, userLoc?.lat ?? null, userLoc?.lng ?? null);
+      await updateRakshakArea(userId, newArea, areaLoc?.lat ?? null, areaLoc?.lng ?? null);
       notify('Coverage area updated successfully! Please reload to see changes.');
       setEditArea(false);
     } catch (err) {
@@ -189,12 +233,12 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     if (userLoc) {
       rakshaksList = rakshaksList.map(r => {
         let distance = 9999;
-        // Fallback to Rau/Indore coordinates if missing in DB for testing
-        const lat = r.latitude || (r.area?.toLowerCase().includes('indore') || r.area?.toLowerCase().includes('rau') ? 22.6366 : null);
-        const lng = r.longitude || (r.area?.toLowerCase().includes('indore') || r.area?.toLowerCase().includes('rau') ? 75.8118 : null);
+        const lat = r.latitude;
+        const lng = r.longitude;
         
         if (lat && lng) {
-          distance = calculateDistanceKm(userLoc.lat, userLoc.lng, lat, lng);
+          // Prefer real road distance (OSRM); fall back to haversine while loading
+          distance = roadDistances[r.id] ?? calculateDistanceKm(userLoc.lat, userLoc.lng, lat, lng);
         }
         return { ...r, distance };
       });
@@ -214,7 +258,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     }
 
     return rakshaksList;
-  }, [rakshaks, userLoc, showAll, searchQuery]);
+  }, [rakshaks, userLoc, showAll, searchQuery, roadDistances]);
 
   return (
     <section className="screen rakshak-screen" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -332,11 +376,11 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', color: '#475569', fontSize: '12px', gap: '6px' }}>
-                  <span style={{ color: '#0f172a', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    ★ {helper.rating}
-                  </span>
-                  <span>·</span>
-                  <span>{helper.distance !== undefined && helper.distance < 9999 ? `${helper.distance.toFixed(1)} km` : '-'}</span>
+                  <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 600 }}>
+                    <Star size={14} fill="#16a34a" /> {helper.rating > 0 ? helper.rating : '0'} 
+                    <span style={{ color: '#64748b' }}>&middot;</span> 
+                    <span style={{ color: '#64748b' }}>{helper.distance !== undefined && helper.distance < 9999 ? `${helper.distance.toFixed(1)} km` : 'Unknown distance'}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -429,7 +473,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                         key={idx}
                         onClick={() => {
                           setNewArea(s.display_name);
-                          setUserLoc({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) });
+                          setAreaLoc({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) });
                           setShowDropdown(false);
                         }}
                         style={{

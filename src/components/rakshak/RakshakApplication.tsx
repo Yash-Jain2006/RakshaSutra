@@ -12,6 +12,20 @@ interface RakshakApplicationProps {
   notify?: (msg: string) => void;
 }
 
+const UploadTile = ({ side, file, setFile, textStr }: { side: 'front' | 'back'; file: File | null; setFile: (file: File | null) => void; textStr: string }) => (
+  <label className={`ref-upload-tile ${file ? 'is-ready' : ''}`}>
+    {file ? <Check size={22} /> : <Upload size={22} />}
+    <span>{textStr}</span>
+    <input type="file" accept="image/*,application/pdf" onChange={(event) => {
+      if (event.target.files && event.target.files.length > 0) {
+        setFile(event.target.files[0]);
+      } else {
+        setFile(null);
+      }
+    }} />
+  </label>
+);
+
 export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, finish, userId, nav, notify }) => {
   const { t, i18n } = useTranslation();
   const [docType, setDocType] = useState<'Aadhaar' | 'PAN Card' | 'Driving Licence'>('Aadhaar');
@@ -112,13 +126,7 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
     }
   };
 
-  const UploadTile = ({ side, file, setFile }: { side: 'front' | 'back'; file: File | null; setFile: (file: File | null) => void }) => (
-    <label className={`ref-upload-tile ${file ? 'is-ready' : ''}`}>
-      {file ? <Check size={22} /> : <Upload size={22} />}
-      <span>{file ? `${side === 'front' ? t('rakshak.upload_front', 'Front') : t('rakshak.upload_back', 'Back')} uploaded` : side === 'front' ? t('rakshak.upload_front', 'Upload Front Side') : t('rakshak.upload_back', 'Upload Back Side')}</span>
-      <input type="file" accept="image/*,.pdf" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-    </label>
-  );
+
 
   return (
     <section className="screen rakshak-apply-screen">
@@ -207,8 +215,18 @@ export const RakshakApplication: React.FC<RakshakApplicationProps> = ({ close, f
           </label>
 
           <div className="ref-upload-grid">
-            <UploadTile side="front" file={frontFile} setFile={setFrontFile} />
-            <UploadTile side="back" file={backFile} setFile={setBackFile} />
+            <UploadTile 
+              side="front" 
+              file={frontFile} 
+              setFile={setFrontFile} 
+              textStr={frontFile ? t('rakshak.front_uploaded', 'Front uploaded') : t('rakshak.upload_front', 'Upload Front Side')} 
+            />
+            <UploadTile 
+              side="back" 
+              file={backFile} 
+              setFile={setBackFile} 
+              textStr={backFile ? t('rakshak.back_uploaded', 'Back uploaded') : t('rakshak.upload_back', 'Upload Back Side')} 
+            />
           </div>
           <div className="ref-rakshak-terms" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px', marginBottom: '24px' }}>
             <input id="terms-checkbox" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} type="checkbox" style={{ width: '20px', height: '20px', accentColor: 'var(--accent)' }} />

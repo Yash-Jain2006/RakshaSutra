@@ -55,7 +55,7 @@ Deno.serve(async (request: Request) => {
   // 1. Try SOS Event first (if trackingId is an sos_events UUID)
   const { data: sosData } = await admin
     .from('sos_events')
-    .select('id, status, latitude, longitude, profiles!inner(display_name)')
+    .select('id, status, latitude, longitude, started_at, profiles!inner(display_name)')
     .eq('id', bearerToken)
     .maybeSingle()
 
@@ -65,6 +65,7 @@ Deno.serve(async (request: Request) => {
       status: sosData.status,
       latitude: sosData.latitude,
       longitude: sosData.longitude,
+      last_location_at: sosData.started_at,
       userName: sosData.profiles?.display_name || 'A user',
     })
   }

@@ -186,30 +186,57 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
   // Dynamic road route resolution if route_geojson was missing from database
   useEffect(() => {
-    if (
-      data &&
-      (!data.route_geojson || !data.route_geojson.coordinates || data.route_geojson.coordinates.length < 2) &&
-      data.latitude &&
-      data.longitude &&
-      data.destination_latitude &&
-      data.destination_longitude &&
-      !routeCalculatedRef.current
-    ) {
+    if (!data || !data.latitude || !data.longitude) return;
+
+    const isSos = data.status === 'sos' || data.type === 'sos';
+
+    if (!isSos) {
+      if (
+        (!data.route_geojson || !data.route_geojson.coordinates || data.route_geojson.coordinates.length < 2) &&
+        data.destination_latitude &&
+        data.destination_longitude &&
+        !routeCalculatedRef.current
+      ) {
+        routeCalculatedRef.current = true;
+        defaultRoutingProvider
+          .calculateRoute(
+            [data.latitude, data.longitude],
+            [data.destination_latitude, data.destination_longitude],
+            (data.transport_mode as any) || 'walking'
+          )
+          .then((res) => {
+            setCalculatedRoute(res);
+          })
+          .catch((err) => {
+            console.warn('[PublicTracking] Road route calculation fallback error:', err);
+          });
+      }
+    } else if (isSos && viewerLocation && !routeCalculatedRef.current) {
       routeCalculatedRef.current = true;
       defaultRoutingProvider
         .calculateRoute(
+          [viewerLocation.lat, viewerLocation.lng],
           [data.latitude, data.longitude],
-          [data.destination_latitude, data.destination_longitude],
-          (data.transport_mode as any) || 'walking'
+          'driving'
         )
         .then((res) => {
           setCalculatedRoute(res);
         })
         .catch((err) => {
-          console.warn('[PublicTracking] Road route calculation fallback error:', err);
+          console.warn('[PublicTracking] Viewer to SOS victim route error:', err);
         });
     }
-  }, [data?.destination_latitude, data?.destination_longitude, data?.latitude, data?.longitude, data?.transport_mode, data?.route_geojson]);
+  }, [
+    data?.destination_latitude,
+    data?.destination_longitude,
+    data?.latitude,
+    data?.longitude,
+    data?.transport_mode,
+    data?.route_geojson,
+    data?.status,
+    data?.type,
+    viewerLocation
+  ]);
 
   // Leaflet map setup and marker synchronisation
   useEffect(() => {
@@ -285,15 +312,16 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     if (activeRouteCoordinates.length > 0) {
       if (!routePolylineRef.current) {
         routePolylineRef.current = L.polyline(activeRouteCoordinates, {
-          color: '#6366f1',
+          color: isSos ? '#ef4444' : '#6366f1',
           weight: 4,
           opacity: 0.85,
           dashArray: '6, 8',
         }).addTo(map);
       } else {
+        routePolylineRef.current.setStyle({ color: isSos ? '#ef4444' : '#6366f1' });
         routePolylineRef.current.setLatLngs(activeRouteCoordinates);
       }
-    } else if (data.destination_latitude && data.destination_longitude) {
+    } else if (!isSos && data.destination_latitude && data.destination_longitude) {
       // Fallback straight-line only if road calculation hasn't finished yet
       const lineCoords: [number, number][] = [
         [data.latitude, data.longitude],
@@ -308,18 +336,41 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
       } else {
         routePolylineRef.current.setLatLngs(lineCoords);
       }
+    } else if (isSos && viewerLocation) {
+      const lineCoords: [number, number][] = [
+        [viewerLocation.lat, viewerLocation.lng],
+        [data.latitude, data.longitude],
+      ];
+      if (!routePolylineRef.current) {
+        routePolylineRef.current = L.polyline(lineCoords, {
+          color: '#ef4444',
+          weight: 3,
+          dashArray: '5, 8',
+        }).addTo(map);
+      } else {
+        routePolylineRef.current.setLatLngs(lineCoords);
+      }
     }
 
     // Auto fit bounds to see both user and destination with road route
-    if (!hasFittedBoundsRef.current && data.destination_latitude && data.destination_longitude) {
-      hasFittedBoundsRef.current = true;
-      map.fitBounds(
-        L.latLngBounds([
+    if (!hasFittedBoundsRef.current) {
+      let boundsToFit: L.LatLngBounds | null = null;
+      if (!isSos && data.destination_latitude && data.destination_longitude) {
+        boundsToFit = L.latLngBounds([
           [data.latitude, data.longitude],
           [data.destination_latitude, data.destination_longitude],
-        ]),
-        { padding: [50, 50], maxZoom: 16 }
-      );
+        ]);
+      } else if (isSos && viewerLocation) {
+        boundsToFit = L.latLngBounds([
+          [viewerLocation.lat, viewerLocation.lng],
+          [data.latitude, data.longitude],
+        ]);
+      }
+
+      if (boundsToFit) {
+        hasFittedBoundsRef.current = true;
+        map.fitBounds(boundsToFit, { padding: [50, 50], maxZoom: 16 });
+      }
     }
 
     // 4. Viewer Location Marker
@@ -387,8 +438,27 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
   const isSos = data.status === 'sos' || data.type === 'sos';
   const isArrived = data.status === 'arrived';
-  const effectiveEtaSeconds = data.eta_seconds ?? calculatedRoute?.durationSeconds ?? null;
-  const effectiveDistanceMeters = data.remaining_distance_meters ?? calculatedRoute?.distanceMeters ?? null;
+  // If SOS, we want the distance/ETA between Viewer and User, NOT the User's Journey ETA
+  const effectiveEtaSeconds = isSos 
+    ? (calculatedRoute?.durationSeconds ?? null)
+    : (data.eta_seconds ?? calculatedRoute?.durationSeconds ?? null);
+
+  let effectiveDistanceMeters = isSos
+    ? (calculatedRoute?.distanceMeters ?? null)
+    : (data.remaining_distance_meters ?? calculatedRoute?.distanceMeters ?? null);
+
+  // Fallback to live straight-line distance for SOS if OSRM route is missing/pending
+  if (isSos && viewerLocation && !effectiveDistanceMeters) {
+    const R = 6371e3; // metres
+    const lat1 = viewerLocation.lat * Math.PI/180;
+    const lat2 = data.latitude * Math.PI/180;
+    const dLat = (data.latitude - viewerLocation.lat) * Math.PI/180;
+    const dLon = (data.longitude - viewerLocation.lng) * Math.PI/180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    effectiveDistanceMeters = R * c;
+  }
+
   const distKm = effectiveDistanceMeters ? (effectiveDistanceMeters / 1000).toFixed(1) : null;
 
   return (
@@ -480,8 +550,18 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
         </div>
 
         {/* Freshness Subtitle */}
-        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '10px', textAlign: 'right' }}>
-          {freshness.label}
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '10px', textAlign: 'right', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSos ? '#ef4444' : '#6366f1' }}></div> User
+             </span>
+             {viewerLocation && (
+               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b' }}></div> You
+               </span>
+             )}
+          </div>
+          <span>{freshness.label}</span>
         </div>
       </div>
     </div>

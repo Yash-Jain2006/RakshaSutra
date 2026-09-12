@@ -7064,6 +7064,7 @@ input[type=number] {
 }
 
 .ref-upload-tile {
+  position: relative;
   display: grid;
   height: 59px;
   place-items: center;
@@ -7087,10 +7088,13 @@ input[type=number] {
 
 .ref-upload-tile input {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   opacity: 0;
-  pointer-events: none;
+  cursor: pointer;
+  z-index: 10;
 }
 
 .ref-rakshak-terms {
