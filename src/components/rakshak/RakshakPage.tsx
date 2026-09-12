@@ -3,6 +3,10 @@ import { AlertTriangle, LockKeyhole, MapPin, ShieldCheck, X, Check, Star } from 
 import { useTranslation } from 'react-i18next';
 import { BackHeader } from '../layout/BackHeader';
 import { RakshakApplication } from './RakshakApplication';
+import { configuredClient } from '../../services/safetyService';
+import { calculateDistanceKm } from '../../utils/locationMath';
+import { notifySpecificRakshak, updateRakshakArea } from '../../services/safetyService';
+import { useEffect, useMemo, useRef } from 'react';
 
 interface RakshakComplaintFormProps {
   close: () => void;
@@ -72,6 +76,138 @@ export const RakshakComplaintForm: React.FC<RakshakComplaintFormProps> = ({ clos
   );
 };
 
+// ── Rate Rakshak Modal ───────────────────────────────────────────────────────
+interface RateRakshakModalProps {
+  rakshak: any;
+  close: () => void;
+  notify: (msg: string) => void;
+}
+
+const RateRakshakModal: React.FC<RateRakshakModalProps> = ({ rakshak, close, notify }) => {
+  const [hovered, setHovered] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!selected) {
+      notify('Please select a star rating first.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Try inserting into rakshak_ratings table
+      const { error } = await configuredClient()
+        .from('rakshak_ratings')
+        .insert({ rakshak_id: rakshak.id, rating: selected });
+
+      if (error) throw error;
+      notify(`\u2705 Rated ${rakshak.name} ${selected} star${selected > 1 ? 's' : ''}!`);
+      close();
+    } catch {
+      // Fallback: update average_rating directly on rakshak_profiles
+      try {
+        const prev = rakshak.rating || 0;
+        const newRating = parseFloat(((prev + selected) / 2).toFixed(1));
+        await configuredClient()
+          .from('rakshak_profiles')
+          .update({ average_rating: newRating })
+          .eq('profile_id', rakshak.id);
+        notify(`\u2705 Rated ${rakshak.name} ${selected} star${selected > 1 ? 's' : ''}!`);
+        close();
+      } catch {
+        notify('Could not submit rating. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const displayStars = hovered || selected;
+
+  return (
+    <div className="modal-backdrop" onClick={close}>
+      <div
+        className="sheet"
+        style={{ padding: '24px 20px 32px', borderRadius: '20px 20px 0 0' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sheet-handle" />
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{
+            width: '52px', height: '52px', borderRadius: '50%',
+            background: '#e0e7ff', color: '#4f46e5',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 800, fontSize: '20px', margin: '0 auto 12px',
+          }}>
+            {rakshak.initials}
+          </div>
+          <h3 style={{ margin: '0 0 4px', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+            Rate {rakshak.name}
+          </h3>
+          <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+            How was your experience?
+          </p>
+        </div>
+
+        {/* Star selector */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '24px' }}>
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              onClick={() => setSelected(star)}
+              onMouseEnter={() => setHovered(star)}
+              onMouseLeave={() => setHovered(0)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+                transition: 'transform 0.1s',
+                transform: displayStars >= star ? 'scale(1.15)' : 'scale(1)',
+              }}
+              aria-label={`${star} star`}
+            >
+              <Star
+                size={36}
+                fill={displayStars >= star ? '#f59e0b' : 'none'}
+                color={displayStars >= star ? '#f59e0b' : '#cbd5e1'}
+                strokeWidth={1.5}
+              />
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={close}
+            style={{
+              flex: 1, padding: '12px', borderRadius: '12px',
+              background: '#f1f5f9', color: '#475569',
+              border: 'none', fontWeight: 700, fontSize: '14px', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!selected || submitting}
+            style={{
+              flex: 2, padding: '12px', borderRadius: '12px',
+              background: selected ? '#8b5cf6' : '#e2e8f0',
+              color: selected ? '#fff' : '#94a3b8',
+              border: 'none', fontWeight: 700, fontSize: '14px',
+              cursor: selected ? 'pointer' : 'not-allowed',
+              transition: 'background 0.2s',
+            }}
+          >
+            {submitting ? 'Submitting\u2026' : 'Submit Rating'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface RakshakPageProps {
   nav: (page: string) => void;
   notify: (msg: string) => void;
@@ -80,12 +216,6 @@ interface RakshakPageProps {
   rakshaks: any[];
 }
 
-import { calculateDistanceKm } from '../../utils/locationMath';
-import { notifySpecificRakshak, updateRakshakArea } from '../../services/safetyService';
-import { useEffect, useMemo, useRef } from 'react';
-
-// ... (keep RakshakComplaintForm as is)
-
 export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplaint, userId, rakshaks }) => {
   const { t, i18n } = useTranslation();
   const [apply, setApply] = useState(false);
@@ -93,10 +223,13 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   const [editArea, setEditArea] = useState(false);
   const [newArea, setNewArea] = useState('');
   const [isUpdatingArea, setIsUpdatingArea] = useState(false);
-  
+  const [ratingTarget, setRatingTarget] = useState<any | null>(null);
+
   const [userLoc, setUserLoc] = useState<{ lat: number, lng: number } | null>(null);
   const [areaLoc, setAreaLoc] = useState<{ lat: number, lng: number } | null>(null);
   const [roadDistances, setRoadDistances] = useState<Record<string, number>>({});
+  const [geocodedAreas, setGeocodedAreas] = useState<Record<string, {lat: number, lng: number}>>({});
+  const [liveRatings, setLiveRatings] = useState<Record<string, { avg: number, count: number }>>({});
   const [showAll, setShowAll] = useState(false);
 
   const currentUserRakshak = useMemo(() => {
@@ -104,13 +237,11 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   }, [rakshaks, userId]);
 
   useEffect(() => {
-    // Immediate fallback using aggressively cached background location
     const cachedLat = localStorage.getItem('lastLocationLat');
     const cachedLng = localStorage.getItem('lastLocationLng');
     if (cachedLat && cachedLng) {
       setUserLoc({ lat: parseFloat(cachedLat), lng: parseFloat(cachedLng) });
     }
-
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -119,10 +250,118 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     }
   }, []);
 
-  // Fetch real road distances via OSRM whenever user location or rakshak list changes
+  // Fetch and subscribe to live ratings
+  useEffect(() => {
+    let subscription: any;
+    const fetchRatings = async () => {
+      try {
+        const { data, error } = await configuredClient()
+          .from('rakshak_ratings')
+          .select('rakshak_id, rating');
+          
+        if (error || !data) return;
+        
+        const ratingsMap: Record<string, { total: number, count: number }> = {};
+        data.forEach(r => {
+          if (!ratingsMap[r.rakshak_id]) ratingsMap[r.rakshak_id] = { total: 0, count: 0 };
+          ratingsMap[r.rakshak_id].total += r.rating;
+          ratingsMap[r.rakshak_id].count += 1;
+        });
+        
+        const result: Record<string, { avg: number, count: number }> = {};
+        for (const [id, stats] of Object.entries(ratingsMap)) {
+          result[id] = { avg: stats.total / stats.count, count: stats.count };
+        }
+        setLiveRatings(result);
+      } catch (err) {
+        console.log('Ratings table unavailable');
+      }
+    };
+    
+    fetchRatings();
+
+    try {
+      subscription = configuredClient()
+        .channel('rakshak_ratings_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'rakshak_ratings' }, () => {
+           fetchRatings();
+        })
+        .subscribe();
+    } catch { /* ignore */ }
+    
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
+  }, []);
+
+  // Geocode rakshaks missing coordinates based on their area string
+  useEffect(() => {
+    const missingCoords = rakshaks.filter(r => (!r.latitude || !r.longitude) && r.area);
+    if (missingCoords.length === 0) return;
+
+    let cancelled = false;
+    const geocodeMissing = async () => {
+      const results = { ...geocodedAreas };
+      let updated = false;
+      
+      for (const r of missingCoords) {
+        if (results[r.id] || cancelled) continue;
+        try {
+          let parts = r.area.split(',').map((p: string) => p.trim());
+          let found = false;
+          
+          // Keep trying by dropping the most specific (first) part of the address
+          while (parts.length >= 2 && !found) {
+            const query = parts.join(', ');
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            if (data && data.length > 0) {
+              results[r.id] = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+              found = true;
+            } else {
+              // Drop the first part (e.g. "Mahaveer Hospital") and try again
+              parts.shift();
+            }
+            
+            // Nominatim usage policy: max 1 request per second
+            await new Promise(resolve => setTimeout(resolve, 1100));
+          }
+          
+          if (!found) {
+            results[r.id] = { lat: NaN, lng: NaN }; // Mark failed to avoid infinite retries
+          }
+          updated = true;
+        } catch {
+          // silently ignore
+        }
+      }
+      if (!cancelled && updated) setGeocodedAreas(results);
+    };
+
+    geocodeMissing();
+    return () => { cancelled = true; };
+  }, [rakshaks, geocodedAreas]);
+
+  // Road distances via OSRM
   useEffect(() => {
     if (!userLoc) return;
-    const candidates = rakshaks.filter(r => r.latitude && r.longitude);
+    
+    // Candidates are those with DB coordinates OR successfully geocoded areas
+    const candidates = rakshaks.map(r => {
+      let lat = r.latitude;
+      let lng = r.longitude;
+      if (!lat || !lng) {
+        const geo = geocodedAreas[r.id];
+        if (geo && !isNaN(geo.lat)) {
+          lat = geo.lat;
+          lng = geo.lng;
+        }
+      }
+      return { ...r, effectiveLat: lat, effectiveLng: lng };
+    }).filter(r => r.effectiveLat && r.effectiveLng);
+
     if (candidates.length === 0) return;
 
     let cancelled = false;
@@ -133,18 +372,14 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
           try {
             const url =
               `https://router.project-osrm.org/route/v1/driving/` +
-              `${userLoc.lng},${userLoc.lat};${r.longitude},${r.latitude}` +
+              `${userLoc.lng},${userLoc.lat};${r.effectiveLng},${r.effectiveLat}` +
               `?overview=false&geometries=polyline`;
             const res = await fetch(url);
             if (!res.ok) return;
             const data = await res.json();
             const meters = data?.routes?.[0]?.distance;
-            if (typeof meters === 'number') {
-              results[r.id] = meters / 1000; // convert to km
-            }
-          } catch {
-            // silently ignore – haversine fallback is still shown
-          }
+            if (typeof meters === 'number') results[r.id] = meters / 1000;
+          } catch { /* silently ignore */ }
         })
       );
       if (!cancelled) setRoadDistances(results);
@@ -152,7 +387,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
 
     fetchRoadDistances();
     return () => { cancelled = true; };
-  }, [userLoc, rakshaks]);
+  }, [userLoc, rakshaks, geocodedAreas]);
 
   const [showDropdown, setShowDropdown] = useState(false);
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -160,38 +395,22 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   const searchTimeout = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!newArea.trim() || !showDropdown) {
-      setSuggestions([]);
-      return;
-    }
-    if (searchTimeout.current) {
-      clearTimeout(searchTimeout.current);
-    }
+    if (!newArea.trim() || !showDropdown) { setSuggestions([]); return; }
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = window.setTimeout(async () => {
       setIsSearching(true);
       try {
         const currentLang = i18n.language || 'en';
         let url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(newArea)}&format=json&addressdetails=1&limit=5&accept-language=${currentLang}`;
         if (userLoc) {
-          const minLon = userLoc.lng - 0.5;
-          const maxLon = userLoc.lng + 0.5;
-          const minLat = userLoc.lat - 0.5;
-          const maxLat = userLoc.lat + 0.5;
-          url += `&viewbox=${minLon},${maxLat},${maxLon},${minLat}&bounded=1`;
+          url += `&viewbox=${userLoc.lng - 0.5},${userLoc.lat + 0.5},${userLoc.lng + 0.5},${userLoc.lat - 0.5}&bounded=1`;
         }
         const res = await fetch(url);
-        const data = await res.json();
-        setSuggestions(data);
-      } catch (err) {
-        console.error('Failed to fetch locations', err);
-      } finally {
-        setIsSearching(false);
-      }
+        setSuggestions(await res.json());
+      } catch (err) { console.error('Failed to fetch locations', err); }
+      finally { setIsSearching(false); }
     }, 500);
-
-    return () => {
-      if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    };
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
   }, [newArea, showDropdown, userLoc]);
 
   const handleUpdateArea = async (e: React.FormEvent) => {
@@ -205,9 +424,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     } catch (err) {
       console.error(err);
       notify('Failed to update area. Please try again.');
-    } finally {
-      setIsUpdatingArea(false);
-    }
+    } finally { setIsUpdatingArea(false); }
   };
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -215,86 +432,96 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
   const handleRequestHelp = async (helper: any) => {
     try {
       notify(`Contacting ${helper.name}...`);
-      const response = await notifySpecificRakshak(helper.id, userLoc);
-      
-      if (response && response.channel === 'sms') {
-        notify(`Alert sent to ${helper.name} via SMS Fallback!`);
-      } else {
-        notify(`Alert sent to ${helper.name} via WhatsApp!`);
-      }
-    } catch (err) {
+      await notifySpecificRakshak(helper.id, userLoc);
+      notify(`✅ Alert sent to ${helper.name} via Email!`);
+    } catch (err: any) {
       console.error(err);
-      notify(`Failed to notify ${helper.name}. They might be offline.`);
+      notify(`Error: ${err.message || 'Unknown failure'}`);
     }
   };
 
   const sortedRakshaks = useMemo(() => {
-    let rakshaksList = [...rakshaks];
+    let list = [...rakshaks];
     if (userLoc) {
-      rakshaksList = rakshaksList.map(r => {
-        let distance = 9999;
-        const lat = r.latitude;
-        const lng = r.longitude;
+      list = list.map(r => {
+        let distance: number | undefined = undefined;
+        let lat = r.latitude;
+        let lng = r.longitude;
         
+        let geocoded = false;
+        if (!lat || !lng) {
+          const geo = geocodedAreas[r.id];
+          if (geo) {
+            geocoded = true;
+            if (!isNaN(geo.lat)) {
+              lat = geo.lat;
+              lng = geo.lng;
+            }
+          }
+        }
+
         if (lat && lng) {
-          // Prefer real road distance (OSRM); fall back to haversine while loading
           distance = roadDistances[r.id] ?? calculateDistanceKm(userLoc.lat, userLoc.lng, lat, lng);
         }
-        return { ...r, distance };
+        return { ...r, distance, hasCoordinates: !!(lat && lng), geocodingAttempted: geocoded };
       });
-      rakshaksList.sort((a, b) => (a.distance || 9999) - (b.distance || 9999));
+      list.sort((a, b) => (a.distance ?? 9999) - (b.distance ?? 9999));
     }
-    
     if (!showAll && userLoc) {
-      rakshaksList = rakshaksList.filter(r => r.distance !== undefined && r.distance <= 10);
+      list = list.filter(r => r.distance === undefined || r.distance <= 10);
     }
-
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      rakshaksList = rakshaksList.filter(r => 
-        r.name.toLowerCase().includes(q) || 
-        r.area.toLowerCase().includes(q)
-      );
+      list = list.filter(r => r.name.toLowerCase().includes(q) || r.area.toLowerCase().includes(q));
     }
+    return list;
+  }, [rakshaks, userLoc, showAll, searchQuery, roadDistances, geocodedAreas]);
 
-    return rakshaksList;
-  }, [rakshaks, userLoc, showAll, searchQuery, roadDistances]);
+  // Human-readable distance label
+  const getDistanceLabel = (helper: any) => {
+    if (helper.distance !== undefined) return `${helper.distance.toFixed(1)} km away`;
+    if (!userLoc) return 'Enable location';
+    if (!helper.hasCoordinates && helper.area && !helper.geocodingAttempted) return 'Calculating…';
+    return 'Distance unknown';
+  };
 
   return (
     <section className="screen rakshak-screen" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <BackHeader title="Rakshaks" nav={nav} />
-      
+
       {currentUserRakshak ? (
         <div style={{ background: '#16a34a', padding: '20px', borderRadius: '16px', color: 'white', display: 'flex', flexDirection: 'column', gap: '16px', boxShadow: '0 4px 6px rgba(22, 163, 74, 0.2)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-            <span style={{ background: 'rgba(255, 255, 255, 0.2)', padding: '8px', borderRadius: '12px', display: 'flex' }}>
+            <span style={{ background: 'rgba(255,255,255,0.2)', padding: '8px', borderRadius: '12px', display: 'flex' }}>
               <ShieldCheck size={24} color="#ffffff" />
             </span>
             <div>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, opacity: 0.9 }}>
-                Your Status
-              </div>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 700, opacity: 0.9 }}>Your Status</div>
               <div style={{ fontSize: '20px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 Verified Rakshak <Check size={18} strokeWidth={4} />
               </div>
             </div>
           </div>
-          
           <p style={{ fontSize: '13px', lineHeight: 1.4, margin: 0, opacity: 0.95 }}>
             Thank you for keeping your community safe. You will be alerted when someone nearby needs help.
           </p>
-          
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-            <div style={{ background: 'rgba(255, 255, 255, 0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>-</div>
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>
+                {liveRatings[currentUserRakshak.id]?.count || 0}
+              </div>
               <div style={{ fontSize: '10px', opacity: 0.9, marginTop: '2px' }}>Responses</div>
             </div>
-            <div style={{ background: 'rgba(255, 255, 255, 0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 700 }}>{currentUserRakshak.rating > 0 ? currentUserRakshak.rating : '-'}</div>
+            <div style={{ background: 'rgba(255,255,255,0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center' }}>
+              <div style={{ fontSize: '18px', fontWeight: 700 }}>
+                {liveRatings[currentUserRakshak.id] 
+                  ? liveRatings[currentUserRakshak.id].avg.toFixed(1)
+                  : (currentUserRakshak.rating > 0 ? currentUserRakshak.rating : '-')}
+              </div>
               <div style={{ fontSize: '10px', opacity: 0.9, marginTop: '2px' }}>Rating</div>
             </div>
-            <div 
-              style={{ background: 'rgba(255, 255, 255, 0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center', cursor: 'pointer' }}
+            <div
+              style={{ background: 'rgba(255,255,255,0.15)', padding: '12px 8px', borderRadius: '12px', textAlign: 'center', cursor: 'pointer' }}
               onClick={() => { setNewArea(currentUserRakshak.area); setEditArea(true); }}
             >
               <div style={{ fontSize: '18px', fontWeight: 700, display: 'flex', justifyContent: 'center' }}><Check size={20} strokeWidth={3} /></div>
@@ -305,15 +532,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
       ) : (
         <div className="rakshak-banner" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ 
-              display: 'flex', 
-              background: '#fff', 
-              padding: '6px', 
-              borderRadius: '8px', 
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-              margin: 0
-            }}>
+            <span style={{ display: 'flex', background: '#fff', padding: '6px', borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 1px 2px rgba(0,0,0,0.05)', margin: 0 }}>
               <ShieldCheck size={16} color="#0f172a" />
             </span>
             <h2 style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.2 }}>
@@ -324,17 +543,14 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
             {t('rakshak.volunteers_desc', 'Verified volunteers who can be alerted in an emergency — never asked to intervene beyond their training.')}
           </p>
           <button className="primary" onClick={() => nav('rakshak-apply')} style={{ marginTop: '2px', width: '100%', padding: '10px', borderRadius: '10px', background: '#1e293b', color: '#fff', border: 'none', fontWeight: 700, fontSize: '13px' }}>
-            {t('rakshak.become', 'Become a Rakshak →')}
+            {t('rakshak.become', 'Become a Rakshak \u2192')}
           </button>
         </div>
       )}
 
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 0, margin: '16px 0' }}>
         <h2>{t('rakshak.meet', 'Meet the Rakshaks')}</h2>
-        <button 
-          onClick={() => setShowAll(!showAll)} 
-          style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', padding: 0 }}
-        >
+        <button onClick={() => setShowAll(!showAll)} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: '13px', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
           {showAll ? t('rakshak.show_nearest', 'Show nearest') : t('home.see_all', 'Show all')}
         </button>
       </div>
@@ -342,9 +558,9 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
       <div style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', background: '#f8fafc', padding: '12px 16px', borderRadius: '12px', color: '#94a3b8' }}>
           <MapPin size={18} style={{ marginRight: '8px' }} />
-          <input 
-            type="text" 
-            placeholder={t('rakshak.search_placeholder', 'Search by name or location...')} 
+          <input
+            type="text"
+            placeholder={t('rakshak.search_placeholder', 'Search by name or location...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ background: 'none', border: 'none', outline: 'none', width: '100%', fontSize: '14px', color: '#0f172a' }}
@@ -355,7 +571,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
       <div style={{ paddingBottom: '32px' }}>
         {sortedRakshaks.map((helper) => (
           <div key={helper.id} style={{ display: 'flex', flexDirection: 'column', padding: '12px', marginBottom: '12px', background: '#fff', borderRadius: '12px', border: '1px solid #cbd5e1', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-            
+
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ marginRight: '12px' }}>
                 {helper.avatarUrl ? (
@@ -366,7 +582,7 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                   </div>
                 )}
               </div>
-              
+
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <b style={{ fontSize: '15px', color: '#0f172a', margin: 0 }}>{helper.name}</b>
@@ -374,13 +590,17 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                     {t('rakshak.verified', 'Verified')} <Check size={10} strokeWidth={3} />
                   </span>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', color: '#475569', fontSize: '12px', gap: '6px' }}>
-                  <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px', color: '#16a34a', fontWeight: 600 }}>
-                    <Star size={14} fill="#16a34a" /> {helper.rating > 0 ? helper.rating : '0'} 
-                    <span style={{ color: '#64748b' }}>&middot;</span> 
-                    <span style={{ color: '#64748b' }}>{helper.distance !== undefined && helper.distance < 9999 ? `${helper.distance.toFixed(1)} km` : 'Unknown distance'}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f59e0b', fontSize: '12px', fontWeight: 600 }}>
+                    <Star size={13} fill="#f59e0b" color="#f59e0b" />
+                    <span>
+                      {liveRatings[helper.id] 
+                        ? `${liveRatings[helper.id].avg.toFixed(1)} (${liveRatings[helper.id].count})` 
+                        : (helper.rating > 0 ? `${Number(helper.rating).toFixed(1)} (1)` : '0 (0)')}
+                    </span>
                   </div>
+                  <span style={{ color: '#cbd5e1', fontSize: '12px' }}>&middot;</span>
+                  <span style={{ color: '#64748b', fontSize: '12px' }}>{getDistanceLabel(helper)}</span>
                 </div>
               </div>
             </div>
@@ -390,17 +610,28 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
               <span>{helper.area}</span>
             </div>
 
-            <button 
-              onClick={() => handleRequestHelp(helper)}
-              style={{ marginTop: '12px', width: '100%', padding: '10px', borderRadius: '12px', background: '#8b5cf6', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '13px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(139, 92, 246, 0.25)' }}
-            >
-              {t('rakshak.request_help', 'Request Help')}
-            </button>
-            
+            {/* Action buttons */}
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button
+                onClick={() => setRatingTarget(helper)}
+                style={{ padding: '9px 14px', borderRadius: '12px', background: '#fef3c7', color: '#b45309', border: '1px solid #fcd34d', fontWeight: 700, fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}
+              >
+                <Star size={13} fill="#b45309" color="#b45309" /> Rate
+              </button>
+              <button
+                onClick={() => handleRequestHelp(helper)}
+                style={{ flex: 1, padding: '10px', borderRadius: '12px', background: '#8b5cf6', color: '#ffffff', border: 'none', fontWeight: 700, fontSize: '13px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(139, 92, 246, 0.25)' }}
+              >
+                {t('rakshak.request_help', 'Request Help')}
+              </button>
+            </div>
+
           </div>
         ))}
         {sortedRakshaks.length === 0 && (
-          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>{t('rakshak.no_rakshaks', 'No Rakshaks found.')}</p>
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>
+            {t('rakshak.no_rakshaks', 'No Rakshaks found.')}
+          </p>
         )}
       </div>
 
@@ -412,19 +643,14 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
 
       {editArea && (
         <div className="modal-backdrop">
-          <form
-            className="sheet complaint-form"
-            onSubmit={handleUpdateArea}
-          >
+          <form className="sheet complaint-form" onSubmit={handleUpdateArea}>
             <div className="sheet-handle" />
             <div className="sheet-title">
               <div>
                 <p>Rakshak Profile</p>
                 <h2>Edit Coverage Area</h2>
               </div>
-              <button type="button" onClick={() => setEditArea(false)} aria-label="Close edit form">
-                <X />
-              </button>
+              <button type="button" onClick={() => setEditArea(false)} aria-label="Close edit form"><X /></button>
             </div>
             <p className="form-intro">
               Update the primary area or neighborhood where you can quickly respond to nearby emergencies.
@@ -435,55 +661,19 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
                 <input
                   type="text"
                   value={newArea}
-                  onChange={(event) => {
-                    setNewArea(event.target.value);
-                    setShowDropdown(true);
-                  }}
-                  onFocus={() => {
-                    if (newArea.trim()) setShowDropdown(true);
-                  }}
+                  onChange={(event) => { setNewArea(event.target.value); setShowDropdown(true); }}
+                  onFocus={() => { if (newArea.trim()) setShowDropdown(true); }}
                   placeholder="e.g. Rau, Indore"
                   required
                   style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', marginTop: '8px', fontSize: '15px' }}
                 />
                 {isSearching && (
-                  <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#64748b' }}>
-                    Searching...
-                  </div>
+                  <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#64748b' }}>Searching...</div>
                 )}
                 {showDropdown && suggestions.length > 0 && (
-                  <ul style={{
-                    position: 'absolute',
-                    top: 'calc(100% + 4px)',
-                    left: 0,
-                    right: 0,
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                    listStyle: 'none',
-                    padding: '4px 0',
-                    margin: 0,
-                    zIndex: 10,
-                    maxHeight: '200px',
-                    overflowY: 'auto'
-                  }}>
+                  <ul style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', listStyle: 'none', padding: '4px 0', margin: 0, zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
                     {suggestions.map((s, idx) => (
-                      <li
-                        key={idx}
-                        onClick={() => {
-                          setNewArea(s.display_name);
-                          setAreaLoc({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) });
-                          setShowDropdown(false);
-                        }}
-                        style={{
-                          padding: '8px 12px',
-                          borderBottom: idx < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          color: '#0f172a'
-                        }}
-                      >
+                      <li key={idx} onClick={() => { setNewArea(s.display_name); setAreaLoc({ lat: parseFloat(s.lat), lng: parseFloat(s.lon) }); setShowDropdown(false); }} style={{ padding: '8px 12px', borderBottom: idx < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer', fontSize: '13px', color: '#0f172a' }}>
                         {s.display_name}
                       </li>
                     ))}
@@ -498,6 +688,13 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
         </div>
       )}
 
+      {ratingTarget && (
+        <RateRakshakModal
+          rakshak={ratingTarget}
+          close={() => setRatingTarget(null)}
+          notify={notify}
+        />
+      )}
 
       {complaint && (
         <RakshakComplaintForm
@@ -509,4 +706,3 @@ export const RakshakPage: React.FC<RakshakPageProps> = ({ nav, notify, onComplai
     </section>
   );
 };
-

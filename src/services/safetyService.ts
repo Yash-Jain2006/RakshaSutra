@@ -188,60 +188,15 @@ export async function dispatchLocationShare(trackingLink: string) {
 }
 
 export async function notifySpecificRakshak(rakshakId: string, location: { lat: number, lng: number } | null) {
-  // Construct the live tracking link based on the current location
-  const trackingLink = location 
-    ? `https://maps.google.com/?q=${location.lat},${location.lng}` 
-    : "Live tracking not available";
+  const { data, error } = await configuredClient().functions.invoke(
+    "notify-rakshak",
+    {
+      body: { rakshakId, location },
+    },
+  );
 
-  const message = `🚨 EMERGENCY: User requested your help at their live location.\nLive Tracking Link: ${trackingLink}`;
-
-  try {
-    // Attempt WhatsApp Notification first
-    const { data: waData, error: waError } = await configuredClient().functions.invoke(
-      "notify-rakshak",
-      {
-        body: { 
-          rakshakId, 
-          location,
-          channel: "whatsapp",
-          message
-        },
-      },
-    );
-
-    // We ignore error for local dev if function doesn't exist yet, just to support the UI workflow
-    if (waError && waError.message && waError.message.includes("Function not found")) {
-      console.log('Mocked success for targeted rakshak WhatsApp notification');
-      return { success: true, channel: 'whatsapp' };
-    }
-
-    if (waError) throw waError;
-    return { ...waData, channel: 'whatsapp' };
-    
-  } catch (err) {
-    console.warn("WhatsApp notification failed, attempting SMS fallback...", err);
-    
-    // SMS Fallback
-    const { data: smsData, error: smsError } = await configuredClient().functions.invoke(
-      "notify-rakshak",
-      {
-        body: { 
-          rakshakId, 
-          location,
-          channel: "sms",
-          message
-        },
-      },
-    );
-
-    if (smsError && smsError.message && smsError.message.includes("Function not found")) {
-      console.log('Mocked success for targeted rakshak SMS fallback notification');
-      return { success: true, channel: 'sms' };
-    }
-    
-    if (smsError) throw smsError;
-    return { ...smsData, channel: 'sms' };
-  }
+  if (error) throw error;
+  return data;
 }
 
 export async function markSosSafe(eventId: string, status: 'safe' | 'cancelled' = "safe") {

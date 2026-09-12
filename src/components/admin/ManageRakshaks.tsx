@@ -58,57 +58,23 @@ export const ManageRakshaks: React.FC<ManageRakshaksProps> = ({ notify }) => {
     fetchApps();
   }, []);
 
-  // Fetch signed URLs for documents of an application
+  // Fetch signed URLs for documents of an application via admin edge function (bypasses RLS)
   const fetchDocs = async (app: RakshakAppItem) => {
     setLoadingDocs(app.id);
     try {
-      // 1. Try fetching recorded documents from DB
-      const { data, error } = await configuredClient()
-        .from('rakshak_documents')
-        .select('id, side, storage_path, mime_type')
-        .eq('application_id', app.id);
+      const { data, error } = await configuredClient().functions.invoke('admin-get-docs', {
+        body: { applicationId: app.id, userId: app.userId },
+      });
 
       if (error) throw error;
 
-      let docRecords = data || [];
+      const docs: RakshakDoc[] = data?.docs || [];
 
-      // 2. If DB records were already deleted or empty, check storage folder directly
-      if (docRecords.length === 0 && app.userId) {
-        const { data: folderFiles } = await configuredClient()
-          .storage.from('identity-documents')
-          .list(app.userId);
-
-        if (folderFiles && folderFiles.length > 0) {
-          docRecords = folderFiles.map((f: any) => ({
-            id: f.id || f.name,
-            side: f.name.startsWith('back') ? 'back' : 'front',
-            storage_path: `${app.userId}/${f.name}`,
-            mime_type: f.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
-          }));
-        }
-      }
-
-      if (docRecords.length === 0) {
+      if (docs.length === 0) {
         notify('No documents found for this application (they may already be deleted).');
         setLoadingDocs(null);
         return;
       }
-
-      // Generate signed URLs (valid for 10 minutes)
-      const docs: RakshakDoc[] = await Promise.all(
-        docRecords.map(async (doc: any) => {
-          const { data: urlData } = await configuredClient()
-            .storage.from('identity-documents')
-            .createSignedUrl(doc.storage_path, 600);
-          return {
-            id: doc.id,
-            side: doc.side,
-            storage_path: doc.storage_path,
-            mime_type: doc.mime_type,
-            signedUrl: urlData?.signedUrl,
-          };
-        })
-      );
 
       setViewingDocs({ ...app, docs });
     } catch (err: any) {
