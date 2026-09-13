@@ -270,3 +270,42 @@ export async function listActivityHistory(userId: string) {
     started_at: event.started_at
   }));
 }
+
+export async function acceptSosEvent(eventId: string, rakshakId: string) {
+  const { data, error } = await configuredClient().rpc('accept_sos_event', {
+    event_id: eventId,
+    rakshak_id: rakshakId,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function getSosEventDetails(eventId: string) {
+  const { data, error } = await configuredClient()
+    .from("sos_events")
+    .select(`
+      id,
+      user_id,
+      latitude,
+      longitude,
+      status,
+      profiles:user_id ( display_name )
+    `)
+    .eq("id", eventId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getRakshakDetails(rakshakId: string) {
+  const { data, error } = await configuredClient()
+    .from("rakshak_profiles")
+    .select(`
+      profile_id,
+      profiles:profile_id ( display_name, phone )
+    `)
+    .eq("profile_id", rakshakId)
+    .single();
+  if (error) throw error;
+  return data;
+}

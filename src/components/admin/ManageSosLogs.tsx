@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Clock, MapPin, Search, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Clock, MapPin, Search, RefreshCw, Trash2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { configuredClient } from '../../services/safetyService';
+
+interface AcceptedRakshakInfo {
+  id: string;
+  name: string;
+  area?: string;
+  time?: string;
+}
 
 interface SosLogItem {
   id: string;
@@ -11,6 +18,8 @@ interface SosLogItem {
   deliveriesCount: number;
   duration: string;
   flagged?: boolean;
+  acceptedRakshak?: AcceptedRakshakInfo | null;
+  dispatchedRakshaksCount: number;
 }
 
 export const ManageSosLogs: React.FC = () => {
@@ -23,12 +32,35 @@ export const ManageSosLogs: React.FC = () => {
     setLoading(true);
     const { data, error } = await configuredClient()
       .from('sos_events')
-      .select('id, status, location_source, started_at, safe_at, cancelled_at, ended_at, profiles(display_name), sos_event_deliveries(count)')
+      .select(`
+        id,
+        status,
+        location_source,
+        started_at,
+        cancelled_at,
+        ended_at,
+        accepted_rakshak_id,
+        profiles ( display_name ),
+        sos_event_deliveries (
+          id,
+          recipient_type,
+          rakshak_id,
+          status,
+          channel,
+          acknowledged_at,
+          rakshak_profiles (
+            coverage_area,
+            profiles!rakshak_profiles_profile_id_fkey (
+              display_name
+            )
+          )
+        )
+      `)
       .order('started_at', { ascending: false })
       .limit(50);
       
     if (data && !error) {
-      const mappedLogs = data.map((e: any) => {
+      const mappedLogs: SosLogItem[] = data.map((e: any) => {
         // Calculate duration
         const start = new Date(e.started_at).getTime();
         const endTimeStr = e.safe_at || e.cancelled_at || e.ended_at;
@@ -44,17 +76,90 @@ export const ManageSosLogs: React.FC = () => {
           ? `Today, ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` 
           : d.toLocaleString([], {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'});
 
+        // Identify accepted / acknowledged rakshak delivery
+        const rakshakDeliveries = (e.sos_event_deliveries || []).filter(
+          (del: any) => del.recipient_type === 'rakshak' || del.rakshak_id != null
+        );
+
+        const acceptedDelivery = rakshakDeliveries.find(
+          (del: any) =>
+            del.status === 'acknowledged' ||
+            del.status === 'accepted' ||
+            del.rakshak_id === e.accepted_rakshak_id ||
+            (del.acknowledged_at && del.status !== 'failed')
+        );
+
+        let acceptedRakshak: AcceptedRakshakInfo | null = null;
+        if (acceptedDelivery) {
+          const rProf = acceptedDelivery.rakshak_profiles;
+          const displayName = rProf?.profiles?.display_name || 'Verified Rakshak';
+          const area = rProf?.coverage_area || '';
+          let ackTime = '';
+          if (acceptedDelivery.acknowledged_at) {
+            const ackDate = new Date(acceptedDelivery.acknowledged_at);
+            ackTime = ackDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          }
+
+          acceptedRakshak = {
+            id: acceptedDelivery.rakshak_id || e.accepted_rakshak_id || '',
+            name: displayName,
+            area: area,
+            time: ackTime,
+          };
+        } else if (e.accepted_rakshak_id) {
+          // Fallback if the delivery record wasn't updated but accepted_rakshak_id is set
+          acceptedRakshak = {
+            id: e.accepted_rakshak_id,
+            name: 'Verified Rakshak', // Will be populated by batch fetch
+          };
+        }
+
         return {
           id: e.id,
           userName: e.profiles?.display_name || 'Unknown User',
           startedAt: dateStr,
           status: e.status,
           locationSource: e.location_source,
-          deliveriesCount: e.sos_event_deliveries?.[0]?.count || 0,
+          deliveriesCount: e.sos_event_deliveries?.length || 0,
           duration: duration,
           flagged: false,
+          acceptedRakshak,
+          dispatchedRakshaksCount: rakshakDeliveries.length,
         };
       });
+
+      // Batch fetch missing profile names and coverage areas for acceptedRakshaks
+      const missingProfileIds = mappedLogs
+        .filter(l => l.acceptedRakshak && l.acceptedRakshak.id && (l.acceptedRakshak.name === 'Verified Rakshak' || !l.acceptedRakshak.area))
+        .map(l => l.acceptedRakshak!.id);
+        
+      if (missingProfileIds.length > 0) {
+        const [{ data: profilesData }, { data: rakshakProfilesData }] = await Promise.all([
+          configuredClient()
+            .from('profiles')
+            .select('id, display_name')
+            .in('id', missingProfileIds),
+          configuredClient()
+            .from('rakshak_profiles')
+            .select('profile_id, coverage_area')
+            .in('profile_id', missingProfileIds)
+        ]);
+          
+        const profileMap = new Map((profilesData || []).map((p: any) => [p.id, p.display_name]));
+        const areaMap = new Map((rakshakProfilesData || []).map((r: any) => [r.profile_id, r.coverage_area]));
+
+        mappedLogs.forEach(l => {
+          if (l.acceptedRakshak && l.acceptedRakshak.id) {
+            if (profileMap.has(l.acceptedRakshak.id)) {
+              l.acceptedRakshak.name = profileMap.get(l.acceptedRakshak.id) || l.acceptedRakshak.name;
+            }
+            if (!l.acceptedRakshak.area && areaMap.has(l.acceptedRakshak.id)) {
+              l.acceptedRakshak.area = areaMap.get(l.acceptedRakshak.id) || '';
+            }
+          }
+        });
+      }
+
       setLogs(mappedLogs);
     }
     setLoading(false);
@@ -133,11 +238,47 @@ export const ManageSosLogs: React.FC = () => {
 
   useEffect(() => {
     fetchLogs();
+
+    const client = configuredClient();
+    const channel = client
+      .channel('admin-sos-logs-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sos_events' },
+        () => {
+          fetchLogs();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sos_event_deliveries' },
+        () => {
+          fetchLogs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
   }, []);
 
   const filteredLogs = logs.filter((log) => {
-    const matchesSearch = log.userName.toLowerCase().includes(search.toLowerCase()) || log.id.includes(search);
-    const matchesStatus = statusFilter === 'all' || log.status === statusFilter;
+    const q = search.toLowerCase().trim();
+    const matchesSearch =
+      !q ||
+      log.userName.toLowerCase().includes(q) ||
+      log.id.toLowerCase().includes(q) ||
+      (log.acceptedRakshak?.name && log.acceptedRakshak.name.toLowerCase().includes(q)) ||
+      (log.acceptedRakshak?.area && log.acceptedRakshak.area.toLowerCase().includes(q));
+
+    let matchesStatus = true;
+    if (statusFilter === 'accepted') {
+      matchesStatus = Boolean(log.acceptedRakshak);
+    } else if (statusFilter !== 'all') {
+      matchesStatus = log.status === statusFilter;
+    }
+
     return matchesSearch && matchesStatus;
   });
 
@@ -172,7 +313,7 @@ export const ManageSosLogs: React.FC = () => {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by user or event ID..."
+            placeholder="Search by user, Rakshak, area, or ID..."
             style={{ width: '100%', paddingLeft: '32px', height: '36px', fontSize: '12px', borderRadius: '8px', border: '1px solid #cbd5e1' }}
           />
         </div>
@@ -185,6 +326,8 @@ export const ManageSosLogs: React.FC = () => {
           <option value="all">All Statuses</option>
           <option value="active">Active</option>
           <option value="safe">Safe</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="accepted">Accepted by Rakshak</option>
         </select>
       </div>
 
@@ -195,8 +338,8 @@ export const ManageSosLogs: React.FC = () => {
             style={{
               padding: '12px',
               borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              background: log.flagged ? '#fffbe6' : '#ffffff',
+              border: log.acceptedRakshak ? '1px solid #86efac' : '1px solid #e2e8f0',
+              background: log.flagged ? '#fffbe6' : log.acceptedRakshak ? '#fafffd' : '#ffffff',
               position: 'relative'
             }}
           >
@@ -237,11 +380,62 @@ export const ManageSosLogs: React.FC = () => {
               </span>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#64748b', marginTop: '6px', paddingRight: '28px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '11px', color: '#64748b', marginTop: '6px', paddingRight: '28px' }}>
               <span><Clock size={12} /> {log.startedAt} ({log.duration})</span>
               <span><MapPin size={12} /> Source: {log.locationSource}</span>
-              <span>Deliveries: {log.deliveriesCount}</span>
+              <span>Total Deliveries: {log.deliveriesCount}</span>
             </div>
+
+            {/* Rakshak Acceptance Status */}
+            {log.acceptedRakshak ? (
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '8px 10px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                  fontSize: '11px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#166534' }}>
+                  <ShieldCheck size={16} color="#16a34a" style={{ flexShrink: 0 }} />
+                  <span>
+                    Accepted by Rakshak: <strong style={{ color: '#14532d' }}>{log.acceptedRakshak.name}</strong>
+                    {log.acceptedRakshak.area ? (
+                      <span style={{ color: '#4b5563', marginLeft: '4px' }}>• {log.acceptedRakshak.area}</span>
+                    ) : null}
+                  </span>
+                </div>
+                {log.acceptedRakshak.time && (
+                  <span style={{ fontSize: '10px', color: '#15803d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    Accepted at {log.acceptedRakshak.time}
+                  </span>
+                )}
+              </div>
+            ) : log.dispatchedRakshaksCount > 0 ? (
+              <div
+                style={{
+                  marginTop: '8px',
+                  padding: '6px 10px',
+                  background: '#f8fafc',
+                  border: '1px dashed #cbd5e1',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  color: '#64748b'
+                }}
+              >
+                <ShieldAlert size={14} color="#94a3b8" />
+                <span>Alerted {log.dispatchedRakshaksCount} nearby Rakshak{log.dispatchedRakshaksCount > 1 ? 's' : ''} (Awaiting Acceptance)</span>
+              </div>
+            ) : null}
           </div>
         ))}
 

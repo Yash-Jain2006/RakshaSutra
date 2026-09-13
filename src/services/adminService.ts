@@ -223,11 +223,23 @@ export async function getAllSosLogs() {
       ended_at,
       cancelled_at,
       safe_at,
-      profiles!sos_events_user_id_fkey!inner (
+      accepted_rakshak_id,
+      profiles (
         display_name
       ),
       sos_event_deliveries (
-        id
+        id,
+        recipient_type,
+        rakshak_id,
+        status,
+        channel,
+        acknowledged_at,
+        rakshak_profiles (
+          coverage_area,
+          profiles!rakshak_profiles_profile_id_fkey (
+            display_name
+          )
+        )
       )
     `)
     .order('started_at', { ascending: false })
@@ -282,6 +294,38 @@ export async function getAllSosLogs() {
       }
     }
 
+    const rakshakDeliveries = (row.sos_event_deliveries || []).filter(
+      (del: any) => del.recipient_type === 'rakshak' || del.rakshak_id != null
+    );
+
+    const acceptedDelivery = rakshakDeliveries.find(
+      (del: any) =>
+        del.status === 'acknowledged' ||
+        del.status === 'accepted' ||
+        del.rakshak_id === row.accepted_rakshak_id ||
+        (del.acknowledged_at && del.status !== 'failed')
+    );
+
+    let acceptedRakshak = null;
+    if (acceptedDelivery) {
+      const rProf = acceptedDelivery.rakshak_profiles;
+      acceptedRakshak = {
+        id: acceptedDelivery.rakshak_id || row.accepted_rakshak_id || '',
+        name: rProf?.profiles?.display_name || 'Verified Rakshak',
+        area: rProf?.coverage_area || '',
+        time: acceptedDelivery.acknowledged_at
+          ? new Date(acceptedDelivery.acknowledged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : ''
+      };
+    } else if (row.accepted_rakshak_id) {
+      acceptedRakshak = {
+        id: row.accepted_rakshak_id,
+        name: 'Verified Rakshak',
+        area: '',
+        time: ''
+      };
+    }
+
     return {
       id: row.id,
       userName: row.profiles?.display_name || 'Unknown User',
@@ -290,7 +334,9 @@ export async function getAllSosLogs() {
       locationSource: row.location_source, // precise, fallback, last_known
       deliveriesCount: row.sos_event_deliveries ? row.sos_event_deliveries.length : 0,
       duration: durationStr,
-      flagged: false // We can add flagged logic later if needed
+      flagged: false,
+      acceptedRakshak,
+      dispatchedRakshaksCount: rakshakDeliveries.length
     };
   });
 }

@@ -16,6 +16,9 @@ import {
   markSosSafe,
   submitRakshakComplaint,
   updateSosLocation,
+  acceptSosEvent,
+  getSosEventDetails,
+  getRakshakDetails,
 } from './services/safetyService.ts';
 import type { EmergencyContact, IncidentReport, LocationPayload, SosDelivery } from './types/models';
 import { startLiveJourney, updateLiveJourney, getCurrentJourney } from './services/journeyService';
@@ -52,6 +55,7 @@ import { NotFoundPage } from './components/layout/NotFoundPage';
 import { PublicTrackingPage } from './components/map/PublicTrackingPage';
 import { TermsPage } from './components/legal/TermsPage';
 import { PrivacyPage } from './components/legal/PrivacyPage';
+import { IncomingSosModal } from './components/rakshak/IncomingSosModal';
 
 export function App() {
   const [publicTrackingId] = useState<string | null>(() => {
@@ -145,6 +149,74 @@ export function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [cityLabel, setCityLabel] = useState('');
   const [profileDisplayName, setProfileDisplayName] = useState('');
+  const [incomingSosAlert, setIncomingSosAlert] = useState<any>(null);
+  const [isAcceptingSos, setIsAcceptingSos] = useState(false);
+
+  const handleAcceptSos = async () => {
+    if (!incomingSosAlert || !user || !supabase) return;
+    setIsAcceptingSos(true);
+    try {
+      // 1. Try the RPC first (runs with SECURITY DEFINER to bypass client RLS issues)
+      let accepted = false;
+      try {
+        const res = await acceptSosEvent(incomingSosAlert.id, user.id);
+        if (res && res.success === false) {
+          throw new Error(res.message || 'Could not accept SOS event');
+        }
+        accepted = true;
+      } catch (rpcErr: any) {
+        console.warn('RPC accept_sos_event failed, attempting direct table updates:', rpcErr?.message);
+        
+        // Direct atomic update as fallback
+        const { data: updatedRows, error: updateErr } = await supabase
+          .from('sos_events')
+          .update({ accepted_rakshak_id: user.id })
+          .eq('id', incomingSosAlert.id)
+          .is('accepted_rakshak_id', null)
+          .select('id');
+
+        if (updateErr) throw updateErr;
+
+        // If updatedRows is empty, RLS or concurrency blocked the update
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            'Database update blocked by permissions (RLS) or this SOS was already accepted. Please run the SQL migration in Supabase.'
+          );
+        }
+        accepted = true;
+      }
+
+      if (accepted) {
+        // Also update the delivery status to 'acknowledged' so it shows up correctly in admin logs
+        try {
+          await supabase
+            .from('sos_event_deliveries')
+            .update({
+              status: 'acknowledged',
+              acknowledged_at: new Date().toISOString()
+            })
+            .eq('sos_event_id', incomingSosAlert.id)
+            .eq('rakshak_id', user.id);
+        } catch (delErr) {
+          console.warn('Could not update delivery status directly:', delErr);
+        }
+
+        notify('✅ SOS Accepted! Opening live tracking...');
+        setIncomingSosAlert(null);
+        // Open the in-app tracking page for this SOS event
+        window.open(`${window.location.origin}/track/${incomingSosAlert.id}`, '_blank');
+      }
+    } catch (err: any) {
+      console.error('Accept failed', err);
+      notify(`❌ Failed to accept: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsAcceptingSos(false);
+    }
+  };
+
+  const handleDeclineSos = () => {
+    setIncomingSosAlert(null);
+  };
 
   const isAdmin = user?.email === 'rakshaasutra@gmail.com';
 
@@ -359,6 +431,79 @@ export function App() {
       mounted = false;
     };
   }, [page]);
+
+  // Rakshak side: Listen for incoming SOS deliveries
+  useEffect(() => {
+    if (!user || !supabase) return;
+
+    const channel = supabase
+      .channel('rakshak-sos-alerts')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'sos_event_deliveries',
+          filter: `rakshak_id=eq.${user.id}`,
+        },
+        async (payload) => {
+          if (payload.new.recipient_type === 'rakshak' && payload.new.status === 'queued') {
+            try {
+              const sosDetails = await getSosEventDetails(payload.new.sos_event_id);
+              if (sosDetails.status === 'active') {
+                setIncomingSosAlert(sosDetails);
+                if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+                  new Notification('🚨 URGENT: SOS Alert!', { body: 'Someone nearby needs your help.', icon: '/favicon.ico' });
+                }
+              }
+            } catch (err) {
+              console.error('Error fetching incoming SOS details', err);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, notifications]);
+
+  // User side: Listen for SOS acceptance by Rakshak
+  useEffect(() => {
+    if (!activeSosEventId || !supabase) return;
+
+    const channel = supabase
+      .channel('user-sos-acceptance')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'sos_events',
+          filter: `id=eq.${activeSosEventId}`,
+        },
+        async (payload) => {
+          if (payload.new.accepted_rakshak_id && !payload.old.accepted_rakshak_id) {
+            try {
+              const rakshakDetails = await getRakshakDetails(payload.new.accepted_rakshak_id);
+              const rakshakName = rakshakDetails.profiles?.display_name || 'A Rakshak';
+              notify(`🚨 ${rakshakName} is on their way to help you!`);
+              if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+                new Notification('Rakshak Responding!', { body: `${rakshakName} has accepted your SOS.`, icon: '/favicon.ico' });
+              }
+            } catch (err) {
+              console.error('Error fetching accepting rakshak details', err);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeSosEventId, notifications]);
 
   const notify = (message: string) => setToast(message);
 
@@ -966,6 +1111,15 @@ export function App() {
           cancel={cancelSOS}
           deliveries={deliveries}
           isOffline={!navigator.onLine}
+        />
+      )}
+
+      {incomingSosAlert && (
+        <IncomingSosModal
+          sosData={incomingSosAlert}
+          onAccept={handleAcceptSos}
+          onDecline={handleDeclineSos}
+          isAccepting={isAcceptingSos}
         />
       )}
 
