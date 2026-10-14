@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, Phone, ShieldCheck, UsersRound, X } from 'lucide-react';
-import { initialContacts } from './data.ts';
+import { initialContacts, DEFAULT_RAKSHASUTRA_CONTACT } from './data.ts';
 
 import { getCurrentSession, onAuthStateChange, signOut } from './services/authService.ts';
 import { supabase } from './lib/supabase';
@@ -411,7 +411,7 @@ export function App() {
     let mounted = true;
 
     listEmergencyContacts()
-      .then((remoteContacts) => mounted && setContacts(remoteContacts as EmergencyContact[]))
+      .then((remoteContacts) => mounted && setContacts([DEFAULT_RAKSHASUTRA_CONTACT, ...(remoteContacts as EmergencyContact[])]))
       .catch(() => mounted && notify('Could not load saved contacts. Showing local data.'));
 
     return () => {
@@ -706,6 +706,7 @@ export function App() {
   };
 
   const removeContact = async (contactId: string | number) => {
+    if (contactId === 'default-rakshasutra') return;
     const previousContacts = contacts;
     setContacts(contacts.filter((c) => c.id !== contactId));
 

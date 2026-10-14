@@ -145,14 +145,16 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({
       </div>
 
       <div className="contact-list">
-        {contacts.map((contact) => (
+        {contacts.map((contact) => {
+          const isDefault = contact.id === 'default-rakshasutra';
+          return (
           <div className="contact-row full" key={contact.id} style={{ flexWrap: 'wrap' }}>
             <span style={{ background: contact.color }}>{contact.initials}</span>
             <div style={{ flex: 1 }}>
               <b>{contact.name}</b>
               <small>
-                {contact.relation}
-                {contact.confirmationStatus === 'pending' ? ' · Confirmation pending' : ''}
+                {contact.relation || ''}
+                {contact.confirmationStatus === 'pending' ? (contact.relation ? ' · ' : '') + 'Confirmation pending' : ''}
               </small>
             </div>
             <div style={{ display: 'flex', flexDirection: 'row', gap: '8px' }}>
@@ -163,12 +165,14 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({
               >
                 {expandedId === contact.id ? <Eye size={17} /> : <EyeOff size={17} />}
               </button>
+              {!isDefault && (
               <button
                 onClick={() => removeContact(contact.id)}
                 aria-label={`Remove ${contact.name}`}
               >
                 <Trash2 size={17} />
               </button>
+              )}
             </div>
             {expandedId === contact.id && (
               <div style={{ width: '100%', paddingLeft: '44px', marginTop: '-4px', fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -177,7 +181,8 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <button className="add-contact" onClick={() => setShowAddForm(true)}>
