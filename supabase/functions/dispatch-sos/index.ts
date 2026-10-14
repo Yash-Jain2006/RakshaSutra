@@ -293,31 +293,29 @@ Deno.serve(async (request: Request) => {
     })
   }
 
-  // 2. Filter Rakshaks: STRICTLY EXCLUDE the user who triggered the SOS
-  let rakshaks = (nearbyRakshaks || []).filter((r: any) => r.profile_id && r.profile_id !== user.id)
+  // 2. Discover Rakshaks: fetch nearby Rakshaks and all verified Rakshaks across the city/system (excluding caller)
+  const { data: allVerifiedRakshaks, error: verifiedError } = await admin
+    .from('rakshak_profiles')
+    .select('profile_id')
+    .eq('status', 'verified')
+    .neq('profile_id', user.id)
+    .limit(30)
 
-  // 3. Fallback: If no other nearby Rakshaks are within 15km, fetch all verified Rakshaks in the system (excluding the caller)
-  if (rakshaks.length === 0) {
-    console.log('No nearby other Rakshaks within radius. Fetching all verified Rakshaks (excluding caller)...')
-    const { data: fallbackRakshaks, error: fbError } = await admin
-      .from('rakshak_profiles')
-      .select('profile_id')
-      .eq('status', 'verified')
-      .neq('profile_id', user.id)
-      .limit(20)
-
-    if (fbError) {
-      console.error('Error fetching fallback verified Rakshaks:', fbError)
-    }
-
-    if (fallbackRakshaks && fallbackRakshaks.length > 0) {
-      rakshaks = fallbackRakshaks.map((r: any) => ({ profile_id: r.profile_id }))
-    }
+  if (verifiedError) {
+    console.error('Error fetching verified Rakshaks:', verifiedError)
   }
 
-  // Final safety check: ensure the caller is never in the recipient rakshaks list
-  rakshaks = rakshaks.filter((r: any) => r.profile_id !== user.id)
-  console.log(`[SOS Dispatch] Found ${allContacts.length} contacts and ${rakshaks.length} responder Rakshaks`)
+  // Merge nearby Rakshaks with verified Rakshaks so NO verified responder is missed
+  const rakshakIdSet = new Set<string>()
+  for (const r of (nearbyRakshaks || [])) {
+    if (r.profile_id && r.profile_id !== user.id) rakshakIdSet.add(r.profile_id)
+  }
+  for (const r of (allVerifiedRakshaks || [])) {
+    if (r.profile_id && r.profile_id !== user.id) rakshakIdSet.add(r.profile_id)
+  }
+
+  let rakshaks = Array.from(rakshakIdSet).map(id => ({ profile_id: id }))
+  console.log(`[SOS Dispatch] Found ${allContacts.length} contacts and ${rakshaks.length} verified responder Rakshaks`)
 
   const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
   const deliveries: any[] = []
@@ -360,18 +358,53 @@ Deno.serve(async (request: Request) => {
     })
   }
 
-  // Fetch rakshak details using their updated profile phone number & auth email
+  // Fetch rakshak details using Auth REST API & profiles table to guarantee real email & phone
   const rakshakDetails: any[] = []
   if (rakshaks && rakshaks.length > 0) {
     const promises = rakshaks.map(async (r: any) => {
       try {
-        const [{ data: rProfile }, authRes] = await Promise.all([
-          admin.from('profiles').select('phone, display_name').eq('id', r.profile_id).maybeSingle(),
-          admin.auth.admin.getUserById(r.profile_id).catch(() => ({ data: null })),
-        ])
-        const phone = rProfile?.phone || authRes?.data?.user?.phone || authRes?.data?.user?.user_metadata?.phone || null
-        const email = authRes?.data?.user?.email || null
-        const displayName = rProfile?.display_name || authRes?.data?.user?.user_metadata?.display_name || 'Verified Rakshak'
+        const { data: rProfile } = await admin
+          .from('profiles')
+          .select('phone, display_name')
+          .eq('id', r.profile_id)
+          .maybeSingle()
+
+        let email = ''
+        let phone = rProfile?.phone || null
+        let displayName = rProfile?.display_name || 'Verified Rakshak'
+
+        // Directly query Supabase Auth Admin REST API for the user's authentic email
+        try {
+          const authRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${r.profile_id}`, {
+            headers: {
+              Authorization: `Bearer ${secretKey}`,
+              apikey: secretKey,
+            },
+          })
+          if (authRes.ok) {
+            const authUser = await authRes.json()
+            email = authUser.email || ''
+            phone = phone || authUser.phone || authUser.user_metadata?.phone || null
+            if (displayName === 'Verified Rakshak' && authUser.user_metadata?.display_name) {
+              displayName = authUser.user_metadata.display_name
+            }
+            console.log(`[Rakshak Lookup] Successfully retrieved email=${email} for Rakshak ID ${r.profile_id}`)
+          } else {
+            console.warn(`[Rakshak Lookup] Auth REST returned status ${authRes.status} for ${r.profile_id}`)
+          }
+        } catch (restErr) {
+          console.error(`[Rakshak Lookup] REST fetch failed for ${r.profile_id}:`, restErr)
+        }
+
+        // Fallback to getUserById if REST was empty
+        if (!email) {
+          try {
+            const userRes = await admin.auth.admin.getUserById(r.profile_id)
+            email = userRes?.data?.user?.email || ''
+            phone = phone || userRes?.data?.user?.phone || null
+          } catch {}
+        }
+
         rakshakDetails.push({ profile_id: r.profile_id, email, phone, displayName })
       } catch (err) {
         console.error(`Error loading Rakshak ${r.profile_id} contact details:`, err)
