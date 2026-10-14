@@ -266,59 +266,115 @@ Deno.serve(async (request: Request) => {
   const { data: existing } = await admin.from('sos_event_deliveries').select('id').eq('sos_event_id', event.id).limit(1)
   if (existing?.length) return json({ eventId: event.id, idempotent: true, deliveriesQueued: existing.length })
 
-  // Find emergency contacts and Rakshaks within 10km (10000m) limit to 15
-  // Find emergency contacts (ignoring confirmation_status for testing so emails go through)
+  // 1. Fetch ALL emergency contacts for this user (not filtering by notification_enabled so pending/unconfirmed contacts also receive emergency alerts)
   const [{ data: contacts, error: contactError }, { data: nearbyRakshaks, error: rakshakError }] = await Promise.all([
-    admin.from('emergency_contacts').select('id, phone_e164, email').eq('user_id', user.id).eq('notification_enabled', true),
+    admin.from('emergency_contacts').select('id, phone_e164, email').eq('user_id', user.id),
     admin.rpc('find_nearby_rakshaks', {
       p_latitude: event.latitude,
       p_longitude: event.longitude,
-      p_radius_meters: 10000,
+      p_radius_meters: 15000,
       p_limit: 15,
+    }).catch((e: any) => {
+      console.warn('find_nearby_rakshaks error:', e);
+      return { data: [] };
     }),
   ])
-  if (contactError || rakshakError) return json({ error: 'Unable to assemble alert recipients' }, 500)
+  if (contactError) {
+    console.error('Error querying emergency_contacts:', contactError)
+  }
 
-  let rakshaks = nearbyRakshaks || []
+  // Ensure default RakshaSutra monitoring contact is always included
+  const allContacts: Array<{ id: any; phone_e164?: string | null; email?: string | null }> = contacts ? [...contacts] : []
+  if (!allContacts.some(c => c.email?.toLowerCase() === 'rakshaasutra@gmail.com')) {
+    allContacts.push({
+      id: null,
+      phone_e164: '+919343899579',
+      email: 'rakshaasutra@gmail.com'
+    })
+  }
 
-  // FALLBACK FOR TESTING: If no Rakshaks are within 10km (common when testing in different cities), 
-  // just fetch ANY Rakshaks so the notification panel works.
+  // 2. Filter Rakshaks: STRICTLY EXCLUDE the user who triggered the SOS
+  let rakshaks = (nearbyRakshaks || []).filter((r: any) => r.profile_id && r.profile_id !== user.id)
+
+  // 3. Fallback: If no other nearby Rakshaks are within 15km, fetch all verified Rakshaks in the system (excluding the caller)
   if (rakshaks.length === 0) {
-    const { data: fallbackRakshaks } = await admin
+    console.log('No nearby other Rakshaks within radius. Fetching all verified Rakshaks (excluding caller)...')
+    const { data: fallbackRakshaks, error: fbError } = await admin
       .from('rakshak_profiles')
       .select('profile_id')
-      .limit(10)
+      .eq('status', 'verified')
+      .neq('profile_id', user.id)
+      .limit(20)
 
-    if (fallbackRakshaks) {
+    if (fbError) {
+      console.error('Error fetching fallback verified Rakshaks:', fbError)
+    }
+
+    if (fallbackRakshaks && fallbackRakshaks.length > 0) {
       rakshaks = fallbackRakshaks.map((r: any) => ({ profile_id: r.profile_id }))
     }
   }
 
+  // Final safety check: ensure the caller is never in the recipient rakshaks list
+  rakshaks = rakshaks.filter((r: any) => r.profile_id !== user.id)
+  console.log(`[SOS Dispatch] Found ${allContacts.length} contacts and ${rakshaks.length} responder Rakshaks`)
+
+  const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
   const deliveries: any[] = []
 
   // Queue Contact Deliveries
-  for (const contact of (contacts || [])) {
-    if (contact.email) deliveries.push({ sos_event_id: event.id, recipient_type: 'contact', contact_id: contact.id, rakshak_id: null, channel: 'email', status: 'queued' })
-    if (contact.phone_e164) deliveries.push({ sos_event_id: event.id, recipient_type: 'contact', contact_id: contact.id, rakshak_id: null, channel: 'sms', status: 'queued' })
+  for (const contact of allContacts) {
+    const validContactId = isUuid(contact.id) ? contact.id : null
+    if (contact.email) {
+      deliveries.push({
+        sos_event_id: event.id,
+        recipient_type: 'contact',
+        contact_id: validContactId,
+        rakshak_id: null,
+        channel: 'email',
+        status: 'queued',
+      })
+    }
+    if (contact.phone_e164) {
+      deliveries.push({
+        sos_event_id: event.id,
+        recipient_type: 'contact',
+        contact_id: validContactId,
+        rakshak_id: null,
+        channel: 'sms',
+        status: 'queued',
+      })
+    }
   }
 
   // Queue Rakshak Deliveries
   for (const rakshak of rakshaks) {
-    // We send in_app to all
-    deliveries.push({ sos_event_id: event.id, recipient_type: 'rakshak', contact_id: null, rakshak_id: rakshak.profile_id, channel: 'in_app', status: 'queued' })
+    // In-app real-time alert for all verified Rakshaks
+    deliveries.push({
+      sos_event_id: event.id,
+      recipient_type: 'rakshak',
+      contact_id: null,
+      rakshak_id: rakshak.profile_id,
+      channel: 'in_app',
+      status: 'queued',
+    })
   }
 
-  // Fetch rakshak details using their updated profile phone number
+  // Fetch rakshak details using their updated profile phone number & auth email
   const rakshakDetails: any[] = []
   if (rakshaks && rakshaks.length > 0) {
     const promises = rakshaks.map(async (r: any) => {
-      const [{ data: rProfile }, { data: authData }] = await Promise.all([
-        admin.from('profiles').select('phone').eq('id', r.profile_id).maybeSingle(),
-        admin.auth.admin.getUserById(r.profile_id).catch(() => ({ data: null })),
-      ])
-      const phone = rProfile?.phone || authData?.user?.phone || authData?.user?.user_metadata?.phone || null
-      const email = authData?.user?.email || null
-      rakshakDetails.push({ profile_id: r.profile_id, email, phone })
+      try {
+        const [{ data: rProfile }, authRes] = await Promise.all([
+          admin.from('profiles').select('phone').eq('id', r.profile_id).maybeSingle(),
+          admin.auth.admin.getUserById(r.profile_id).catch(() => ({ data: null })),
+        ])
+        const phone = rProfile?.phone || authRes?.data?.user?.phone || authRes?.data?.user?.user_metadata?.phone || null
+        const email = authRes?.data?.user?.email || null
+        rakshakDetails.push({ profile_id: r.profile_id, email, phone })
+      } catch (err) {
+        console.error(`Error loading Rakshak ${r.profile_id} contact details:`, err)
+      }
     })
     await Promise.all(promises)
   }
@@ -326,10 +382,24 @@ Deno.serve(async (request: Request) => {
   // Queue Rakshak Phone & Email Deliveries
   for (const rDetails of rakshakDetails) {
     if (rDetails.phone) {
-      deliveries.push({ sos_event_id: event.id, recipient_type: 'rakshak', contact_id: null, rakshak_id: rDetails.profile_id, channel: 'sms', status: 'queued' })
+      deliveries.push({
+        sos_event_id: event.id,
+        recipient_type: 'rakshak',
+        contact_id: null,
+        rakshak_id: rDetails.profile_id,
+        channel: 'sms',
+        status: 'queued',
+      })
     }
     if (rDetails.email) {
-      deliveries.push({ sos_event_id: event.id, recipient_type: 'rakshak', contact_id: null, rakshak_id: rDetails.profile_id, channel: 'email', status: 'queued' })
+      deliveries.push({
+        sos_event_id: event.id,
+        recipient_type: 'rakshak',
+        contact_id: null,
+        rakshak_id: rDetails.profile_id,
+        channel: 'email',
+        status: 'queued',
+      })
     }
   }
 
@@ -351,16 +421,21 @@ Deno.serve(async (request: Request) => {
       const sentPhones = new Set<string>()
       const sentEmails = new Set<string>()
 
-      for (const contact of (contacts || [])) {
+      for (const contact of allContacts) {
+        const validContactId = isUuid(contact.id) ? contact.id : null
         const phoneSuffix = userPhone ? `\n\n📞 Caller Phone: ${userPhone}` : ''
         const message = `🚨 *URGENT SOS ALERT* 🚨\n\n*${userName}* has triggered an SOS and needs immediate assistance.${phoneSuffix}\n\nView their live location here: ${locationLink}`
         
         let phonePromise = Promise.resolve(false)
         if (contact.phone_e164) {
-          const smsDelivery = insertedDeliveries.find(d => d.contact_id === contact.id && d.channel === 'sms')
+          const smsDelivery = insertedDeliveries.find(d =>
+            d.recipient_type === 'contact' &&
+            d.channel === 'sms' &&
+            ((validContactId && d.contact_id === validContactId) || (!validContactId && !d.contact_id))
+          )
           if (smsDelivery) {
             const p = (async () => {
-              if (sentPhones.has(contact.phone_e164)) {
+              if (sentPhones.has(contact.phone_e164!)) {
                 await admin.from('sos_event_deliveries').update({
                   status: 'delivered',
                   delivered_at: new Date().toISOString(),
@@ -368,15 +443,15 @@ Deno.serve(async (request: Request) => {
                 }).eq('id', smsDelivery.id)
                 return true;
               }
-              sentPhones.add(contact.phone_e164);
+              sentPhones.add(contact.phone_e164!);
 
               // 1. Primary: Meta WhatsApp Cloud API (Automated, ~₹0.115)
-              let success = await sendMetaWhatsAppMessage(contact.phone_e164, userName, locationLink)
+              let success = await sendMetaWhatsAppMessage(contact.phone_e164!, userName, locationLink)
 
               // 2. Fallback: MSG91 Indian SMS (Automated, ~₹0.18)
               if (!success) {
                 console.log(`[Alert Dispatch] WhatsApp did not succeed for ${contact.phone_e164}. Falling back to MSG91 SMS...`)
-                success = await sendMsg91Sms(contact.phone_e164, userName, locationLink)
+                success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
               }
 
               await admin.from('sos_event_deliveries').update({
@@ -392,16 +467,20 @@ Deno.serve(async (request: Request) => {
         }
 
         if (contact.email) {
-          const emailDelivery = insertedDeliveries.find(d => d.contact_id === contact.id && d.channel === 'email')
+          const emailDelivery = insertedDeliveries.find(d =>
+            d.recipient_type === 'contact' &&
+            d.channel === 'email' &&
+            ((validContactId && d.contact_id === validContactId) || (!validContactId && !d.contact_id))
+          )
           if (emailDelivery) {
             promises.push(
               (async () => {
                 let success = false;
-                if (sentEmails.has(contact.email)) {
+                if (sentEmails.has(contact.email!)) {
                   success = true;
                 } else {
-                  sentEmails.add(contact.email);
-                  success = await sendEmailAlert(contact.email, locationLink, userName, userEmail)
+                  sentEmails.add(contact.email!);
+                  success = await sendEmailAlert(contact.email!, locationLink, userName, userEmail)
                 }
 
                 if (!success && contact.phone_e164) {
@@ -409,7 +488,7 @@ Deno.serve(async (request: Request) => {
                   const phoneSuccess = await phonePromise
                   if (!phoneSuccess) {
                     console.log(`Email failed for ${contact.email}, trying MSG91 SMS fallback...`)
-                    success = await sendMsg91Sms(contact.phone_e164, userName, locationLink)
+                    success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
                   }
                 }
                 await admin.from('sos_event_deliveries').update({
