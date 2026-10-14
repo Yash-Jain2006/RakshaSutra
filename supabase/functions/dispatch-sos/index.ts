@@ -366,12 +366,13 @@ Deno.serve(async (request: Request) => {
     const promises = rakshaks.map(async (r: any) => {
       try {
         const [{ data: rProfile }, authRes] = await Promise.all([
-          admin.from('profiles').select('phone').eq('id', r.profile_id).maybeSingle(),
+          admin.from('profiles').select('phone, display_name').eq('id', r.profile_id).maybeSingle(),
           admin.auth.admin.getUserById(r.profile_id).catch(() => ({ data: null })),
         ])
         const phone = rProfile?.phone || authRes?.data?.user?.phone || authRes?.data?.user?.user_metadata?.phone || null
         const email = authRes?.data?.user?.email || null
-        rakshakDetails.push({ profile_id: r.profile_id, email, phone })
+        const displayName = rProfile?.display_name || authRes?.data?.user?.user_metadata?.display_name || 'Verified Rakshak'
+        rakshakDetails.push({ profile_id: r.profile_id, email, phone, displayName })
       } catch (err) {
         console.error(`Error loading Rakshak ${r.profile_id} contact details:`, err)
       }
@@ -557,6 +558,16 @@ Deno.serve(async (request: Request) => {
         }
       }
 
+      // Also dispatch confirmation email to the caller so they get immediate alert confirmation in their own inbox
+      if (userEmail && !sentEmails.has(userEmail)) {
+        sentEmails.add(userEmail);
+        promises.push(
+          sendEmailAlert(userEmail, locationLink, userName, userEmail)
+            .then(ok => console.log(`[Caller Confirmation] Email sent to ${userEmail}:`, ok))
+            .catch(err => console.error('Error sending confirmation email to caller:', err))
+        );
+      }
+
       await Promise.allSettled(promises)
     } catch (e) {
       console.error('Fatal error in sendAlerts background worker:', e)
@@ -572,11 +583,32 @@ Deno.serve(async (request: Request) => {
     details: { contact_count: contacts?.length ?? 0, rakshak_count: rakshaks?.length ?? 0 },
   })
 
+  // Enrich deliveries with friendly names and subheads for frontend display
+  const enrichedDeliveries = insertedDeliveries.map((d: any) => {
+    if (d.recipient_type === 'rakshak') {
+      const rInfo = rakshakDetails.find(r => r.profile_id === d.rakshak_id);
+      return {
+        ...d,
+        recipient_name: rInfo?.displayName || 'Verified Volunteer',
+        recipient_sub: 'Verified Volunteer',
+      };
+    }
+    if (d.recipient_type === 'contact') {
+      const cInfo = allContacts.find(c => (c.id && c.id === d.contact_id) || (!d.contact_id && c.email === 'rakshaasutra@gmail.com'));
+      return {
+        ...d,
+        recipient_name: (cInfo as any)?.name || (cInfo?.email === 'rakshaasutra@gmail.com' ? 'RakshaSutra' : 'Emergency Contact'),
+        recipient_sub: 'Emergency Contact',
+      };
+    }
+    return d;
+  });
+
   return json({
     eventId: event.id,
     contactCount: contacts?.length ?? 0,
     rakshakCount: rakshaks?.length ?? 0,
-    deliveriesQueued: insertedDeliveries.length,
-    deliveries: insertedDeliveries
+    deliveriesQueued: enrichedDeliveries.length,
+    deliveries: enrichedDeliveries
   })
 })

@@ -140,7 +140,7 @@ export function App() {
   const [activeShareUrl, setActiveShareUrl] = useState<string>('');
   const [deliveries, setDeliveries] = useState<SosDelivery[]>([]);
   const [notifications, setNotifications] = useState(() => localStorage.getItem('notifications') !== 'false');
-  const [record, setRecord] = useState(() => localStorage.getItem('record') === 'true');
+  const [record, setRecord] = useState(() => localStorage.getItem('auto_av_sos') !== 'false');
   const sosHoldRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<BlobPart[]>([]);
@@ -1010,7 +1010,11 @@ export function App() {
               notifications={notifications}
               setNotifications={setNotifications}
               record={record}
-              setRecord={setRecord}
+              setRecord={(val) => {
+                setRecord(val);
+                localStorage.setItem('auto_av_sos', val ? 'true' : 'false');
+                localStorage.setItem('record', val ? 'true' : 'false');
+              }}
               displayName={displayName}
               email={user?.email || ''}
               onSignOut={handleSignOut}

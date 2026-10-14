@@ -57,6 +57,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         stream.getTracks().forEach(track => track.stop());
         setRecord(true);
         localStorage.setItem('auto_av_sos', 'true');
+        localStorage.setItem('record', 'true');
       } catch (err: any) {
         console.warn('Permission denied for auto-AV', err);
         if (err.name === 'NotAllowedError') {
@@ -66,10 +67,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         }
         setRecord(false);
         localStorage.setItem('auto_av_sos', 'false');
+        localStorage.setItem('record', 'false');
       }
     } else {
       setRecord(false);
       localStorage.setItem('auto_av_sos', 'false');
+      localStorage.setItem('record', 'false');
     }
   };
 

@@ -30,12 +30,18 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
   const handleConfirmCancel = () => {
     setShowConfirmCancel(false);
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (err) {
+        console.error('Error stopping recorder:', err);
+      }
     }
     if (stream) {
       stream.getTracks().forEach((t) => t.stop());
     }
-    cancel();
+    setTimeout(() => {
+      cancel();
+    }, 250);
   };
 
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -78,15 +84,25 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
     let localStream: MediaStream | null = null;
     let localMr: MediaRecorder | null = null;
 
-    const shouldRecord = localStorage.getItem('auto_av_sos') === 'true';
-    if (shouldRecord) {
-      // Try back camera first; fall back to front if not available
-      const tryGetMedia = () =>
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: 'environment' }, audio: true })
-          .catch(() =>
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true })
-          );
+    // Default to enabled for safety unless user explicitly turned it off in settings
+    const shouldRecord = localStorage.getItem('auto_av_sos') !== 'false';
+    if (shouldRecord && navigator.mediaDevices?.getUserMedia) {
+      // Try back camera first; fall back to front, then any video, then audio-only
+      const tryGetMedia = async (): Promise<MediaStream> => {
+        try {
+          return await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: true });
+        } catch {
+          try {
+            return await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+          } catch {
+            try {
+              return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            } catch {
+              return await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
+          }
+        }
+      };
 
       tryGetMedia()
         .then((s) => {
@@ -96,45 +112,73 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
           }
           localStream = s;
           setStream(s);
-          setPerms(prev => ({ ...prev, audio: true, video: true }));
+
+          const hasAudio = s.getAudioTracks().length > 0;
+          const hasVideo = s.getVideoTracks().length > 0;
+          setPerms(prev => ({
+            ...prev,
+            audio: hasAudio,
+            video: hasVideo
+          }));
 
           // Start Recording to save on device
           try {
-            const preferredMime = MediaRecorder.isTypeSupported('video/mp4') 
-              ? 'video/mp4' 
-              : 'video/webm';
-            const mr = new MediaRecorder(s, { mimeType: preferredMime });
+            let mimeType = '';
+            if (hasVideo) {
+              if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+                mimeType = 'video/webm;codecs=vp8,opus';
+              } else if (MediaRecorder.isTypeSupported('video/webm')) {
+                mimeType = 'video/webm';
+              } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                mimeType = 'video/mp4';
+              }
+            } else if (hasAudio) {
+              if (MediaRecorder.isTypeSupported('audio/webm')) {
+                mimeType = 'audio/webm';
+              }
+            }
+
+            const options = mimeType ? { mimeType } : undefined;
+            const mr = new MediaRecorder(s, options);
             localMr = mr;
             mediaRecorderRef.current = mr;
             
             mr.ondataavailable = (e) => {
-              if (e.data.size > 0) chunksRef.current.push(e.data);
+              if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
             };
 
             mr.onstop = () => {
               if (chunksRef.current.length === 0) return;
-              const ext = preferredMime === 'video/mp4' ? 'mp4' : 'webm';
-              const blob = new Blob(chunksRef.current, { type: preferredMime });
+              const isVideo = hasVideo;
+              const ext = mimeType.includes('mp4') ? 'mp4' : isVideo ? 'webm' : 'weba';
+              const blob = new Blob(chunksRef.current, { type: mimeType || (isVideo ? 'video/webm' : 'audio/webm') });
               chunksRef.current = []; // Clear for next recording
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.style.display = 'none';
-              a.href = url;
-              a.download = `rakshasutra-sos-${new Date().getTime()}.${ext}`;
-              document.body.appendChild(a);
-              a.click();
-              setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-              }, 100);
+
+              try {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `rakshasutra-sos-${Date.now()}.${ext}`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                  try {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  } catch {}
+                }, 2000);
+              } catch (saveErr) {
+                console.error('Failed to auto-download SOS evidence:', saveErr);
+              }
             };
 
             mr.start(1000); // chunk every 1 second
           } catch (err) {
-            console.error('MediaRecorder failed:', err);
+            console.error('MediaRecorder start failed:', err);
           }
         })
-        .catch((e) => console.error('Failed to auto-record on SOS:', e));
+        .catch((e) => console.error('Failed to get media for SOS recording:', e));
     }
 
     return () => {
@@ -232,8 +276,12 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
                 : 'No contacts added yet. Add contacts in settings.'}
             </small>
           </div>
-          <i className="queued">
-            {isOffline ? 'Pending (Offline)' : 'Queued'}
+          <i className={deliveries.some((d) => d.recipient_type === 'contact' && (d.status === 'delivered' || d.status === 'sent')) ? 'delivered' : 'queued'}>
+            {isOffline
+              ? 'Pending (Offline)'
+              : deliveries.some((d) => d.recipient_type === 'contact' && (d.status === 'delivered' || d.status === 'sent'))
+                ? 'Alert Sent'
+                : 'Queued'}
           </i>
         </div>
 
