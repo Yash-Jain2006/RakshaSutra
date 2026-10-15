@@ -34,7 +34,7 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
   if (from.includes('rakshasutra.com')) from = from.replace('rakshasutra.com', 'rakshasutra.in')
   if (!apiKey) {
     console.warn('RESEND_API_KEY not found. Skipping email to', to)
-    return
+    return false
   }
 
   const html = `
@@ -51,6 +51,7 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
       </div>
     </div>
   `
+  console.log(`[Email] Attempting to send SOS email from="${from}" to="${to}" subject="SOS Alert from ${userEmail}"`)
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -62,15 +63,16 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
         html,
       }),
     })
+    const resBody = await res.text()
     if (!res.ok) {
-      console.error('Email send failed with status:', res.status, await res.text())
+      console.error(`[Email] FAILED to send to ${to}. Status: ${res.status}. Response: ${resBody}`)
       return false
     } else {
-      console.log('Email sent successfully to', to)
+      console.log(`[Email] SUCCESS sent to ${to}. Response: ${resBody}`)
       return true
     }
   } catch (e) {
-    console.error('Email send network error:', e)
+    console.error('[Email] Network error sending to', to, ':', e)
     return false
   }
 }
@@ -263,12 +265,22 @@ Deno.serve(async (request: Request) => {
   const locationLink = `${frontendUrl || Deno.env.get('FRONTEND_URL') || 'https://rakshasutra.in'}/track/${event.id}`
 
   const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
-  const { data: existing } = await admin.from('sos_event_deliveries').select('id').eq('sos_event_id', event.id).limit(1)
-  if (existing?.length) return json({ eventId: event.id, idempotent: true, deliveriesQueued: existing.length })
+  // Idempotency check: only skip if there are deliveries that were actually sent (not all failed)
+  const { data: existing } = await admin.from('sos_event_deliveries').select('id, status').eq('sos_event_id', event.id)
+  if (existing?.length) {
+    const hasAnySuccess = existing.some((d: any) => d.status === 'delivered' || d.status === 'queued')
+    if (hasAnySuccess) {
+      console.log(`[SOS Dispatch] Idempotency: ${existing.length} deliveries already exist with at least one success/queued. Skipping.`)
+      return json({ eventId: event.id, idempotent: true, deliveriesQueued: existing.length })
+    }
+    // All previous deliveries failed — delete them and retry
+    console.log(`[SOS Dispatch] All ${existing.length} previous deliveries failed. Deleting and retrying...`)
+    await admin.from('sos_event_deliveries').delete().eq('sos_event_id', event.id)
+  }
 
   // 1. Fetch ALL emergency contacts for this user (not filtering by notification_enabled so pending/unconfirmed contacts also receive emergency alerts)
   const [{ data: contacts, error: contactError }, { data: nearbyRakshaks, error: rakshakError }] = await Promise.all([
-    admin.from('emergency_contacts').select('id, phone_e164, email').eq('user_id', user.id),
+    admin.from('emergency_contacts').select('id, name, phone_e164, email').eq('user_id', user.id),
     admin.rpc('find_nearby_rakshaks', {
       p_latitude: event.latitude,
       p_longitude: event.longitude,
@@ -283,14 +295,44 @@ Deno.serve(async (request: Request) => {
     console.error('Error querying emergency_contacts:', contactError)
   }
 
-  // Ensure default RakshaSutra monitoring contact is always included
-  const allContacts: Array<{ id: any; phone_e164?: string | null; email?: string | null }> = contacts ? [...contacts] : []
-  if (!allContacts.some(c => c.email?.toLowerCase() === 'rakshaasutra@gmail.com')) {
-    allContacts.push({
-      id: null,
-      phone_e164: '+919343899579',
-      email: 'rakshaasutra@gmail.com'
-    })
+  const allContacts: Array<{ id?: string | null; name?: string; phone_e164?: string | null; email?: string | null }> = contacts ? [...contacts] : []
+
+  // Ensure default RakshaSutra monitoring contact is present in emergency_contacts for this user
+  let defaultContact = allContacts.find(c => c.email?.toLowerCase() === 'rakshaasutra@gmail.com')
+  if (!defaultContact) {
+    try {
+      const { data: insertedDefault, error: insErr } = await admin
+        .from('emergency_contacts')
+        .insert({
+          user_id: user.id,
+          name: 'RakshaSutra',
+          relationship: 'Emergency Support',
+          phone_e164: '+919343899579',
+          email: 'rakshaasutra@gmail.com',
+        })
+        .select('id, name, phone_e164, email')
+        .maybeSingle()
+
+      if (!insErr && insertedDefault) {
+        allContacts.push(insertedDefault)
+      } else {
+        console.warn('Could not insert default emergency contact:', insErr)
+        allContacts.push({
+          id: null,
+          name: 'RakshaSutra',
+          phone_e164: '+919343899579',
+          email: 'rakshaasutra@gmail.com',
+        })
+      }
+    } catch (e) {
+      console.warn('Error inserting default contact:', e)
+      allContacts.push({
+        id: null,
+        name: 'RakshaSutra',
+        phone_e164: '+919343899579',
+        email: 'rakshaasutra@gmail.com',
+      })
+    }
   }
 
   // 2. Discover Rakshaks: fetch nearby Rakshaks and all verified Rakshaks across the city/system (excluding caller)
@@ -316,18 +358,23 @@ Deno.serve(async (request: Request) => {
 
   let rakshaks = Array.from(rakshakIdSet).map(id => ({ profile_id: id }))
   console.log(`[SOS Dispatch] Found ${allContacts.length} contacts and ${rakshaks.length} verified responder Rakshaks`)
+  console.log(`[SOS Dispatch] Contact emails: ${allContacts.map(c => c.email).filter(Boolean).join(', ')}`)
+  console.log(`[SOS Dispatch] Contact phones: ${allContacts.map(c => c.phone_e164).filter(Boolean).join(', ')}`)
 
   const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
   const deliveries: any[] = []
 
-  // Queue Contact Deliveries
+  // Queue Contact Deliveries - only push to DB deliveries if valid contact ID exists (to respect DB foreign key & non-null check constraints)
   for (const contact of allContacts) {
-    const validContactId = isUuid(contact.id) ? contact.id : null
+    if (!contact.id || !isUuid(contact.id)) {
+      console.log(`[SOS Dispatch] Contact ${contact.email || contact.phone_e164} does not have DB UUID id, will dispatch directly without DB queue row`)
+      continue
+    }
     if (contact.email) {
       deliveries.push({
         sos_event_id: event.id,
         recipient_type: 'contact',
-        contact_id: validContactId,
+        contact_id: contact.id,
         rakshak_id: null,
         channel: 'email',
         status: 'queued',
@@ -337,7 +384,7 @@ Deno.serve(async (request: Request) => {
       deliveries.push({
         sos_event_id: event.id,
         recipient_type: 'contact',
-        contact_id: validContactId,
+        contact_id: contact.id,
         rakshak_id: null,
         channel: 'sms',
         status: 'queued',
@@ -441,10 +488,11 @@ Deno.serve(async (request: Request) => {
   if (deliveries.length) {
     const { data: inserted, error: deliveryError } = await admin.from('sos_event_deliveries').insert(deliveries).select('*')
     if (deliveryError) {
-      console.error('Bulk Insert Error:', deliveryError)
-      return json({ error: 'Unable to queue deliveries', details: deliveryError }, 500)
+      console.error('[SOS Dispatch] Bulk Insert Error into sos_event_deliveries:', deliveryError)
+      // CRITICAL: DO NOT abort with 500! A database logging issue must NEVER prevent emergency alerts from going out!
+    } else if (inserted) {
+      insertedDeliveries = inserted
     }
-    if (inserted) insertedDeliveries = inserted
   }
 
   // ACTUALLY SEND THE ALERTS (Fire and forget to not block the response)
@@ -456,7 +504,6 @@ Deno.serve(async (request: Request) => {
       const sentEmails = new Set<string>()
 
       for (const contact of allContacts) {
-        const validContactId = isUuid(contact.id) ? contact.id : null
         const phoneSuffix = userPhone ? `\n\n📞 Caller Phone: ${userPhone}` : ''
         const message = `🚨 *URGENT SOS ALERT* 🚨\n\n*${userName}* has triggered an SOS and needs immediate assistance.${phoneSuffix}\n\nView their live location here: ${locationLink}`
         
@@ -465,76 +512,82 @@ Deno.serve(async (request: Request) => {
           const smsDelivery = insertedDeliveries.find(d =>
             d.recipient_type === 'contact' &&
             d.channel === 'sms' &&
-            ((validContactId && d.contact_id === validContactId) || (!validContactId && !d.contact_id))
+            contact.id && d.contact_id === contact.id
           )
-          if (smsDelivery) {
-            const p = (async () => {
-              if (sentPhones.has(contact.phone_e164!)) {
+          const p = (async () => {
+            if (sentPhones.has(contact.phone_e164!)) {
+              if (smsDelivery) {
                 await admin.from('sos_event_deliveries').update({
                   status: 'delivered',
                   delivered_at: new Date().toISOString(),
                   failure_reason: null
-                }).eq('id', smsDelivery.id)
-                return true;
+                }).eq('id', smsDelivery.id).catch(e => console.warn('Delivery update err:', e))
               }
-              sentPhones.add(contact.phone_e164!);
+              return true;
+            }
+            sentPhones.add(contact.phone_e164!);
 
-              // 1. Primary: Meta WhatsApp Cloud API (Automated, ~₹0.115)
-              let success = await sendMetaWhatsAppMessage(contact.phone_e164!, userName, locationLink)
+            // 1. Primary: Meta WhatsApp Cloud API (Automated, ~₹0.115)
+            let success = await sendMetaWhatsAppMessage(contact.phone_e164!, userName, locationLink)
 
-              // 2. Fallback: MSG91 Indian SMS (Automated, ~₹0.18)
-              if (!success) {
-                console.log(`[Alert Dispatch] WhatsApp did not succeed for ${contact.phone_e164}. Falling back to MSG91 SMS...`)
-                success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
-              }
+            // 2. Fallback: MSG91 Indian SMS (Automated, ~₹0.18)
+            if (!success) {
+              console.log(`[Alert Dispatch] WhatsApp did not succeed for ${contact.phone_e164}. Falling back to MSG91 SMS...`)
+              success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
+            }
 
+            if (smsDelivery) {
               await admin.from('sos_event_deliveries').update({
                 status: success ? 'delivered' : 'failed',
                 delivered_at: success ? new Date().toISOString() : null,
                 failure_reason: success ? null : 'WhatsApp & SMS delivery failed'
-              }).eq('id', smsDelivery.id)
-              return success
-            })()
-            phonePromise = p
-            promises.push(p.then(() => {}))
-          }
+              }).eq('id', smsDelivery.id).catch(e => console.warn('Delivery update err:', e))
+            }
+            return success
+          })()
+          phonePromise = p
+          promises.push(p.then(() => {}))
         }
 
         if (contact.email) {
           const emailDelivery = insertedDeliveries.find(d =>
             d.recipient_type === 'contact' &&
             d.channel === 'email' &&
-            ((validContactId && d.contact_id === validContactId) || (!validContactId && !d.contact_id))
+            contact.id && d.contact_id === contact.id
           )
-          if (emailDelivery) {
-            promises.push(
-              (async () => {
-                let success = false;
-                if (sentEmails.has(contact.email!)) {
-                  success = true;
-                } else {
-                  sentEmails.add(contact.email!);
-                  success = await sendEmailAlert(contact.email!, locationLink, userName, userEmail)
-                }
+          promises.push(
+            (async () => {
+              let success = false;
+              if (sentEmails.has(contact.email!)) {
+                success = true;
+              } else {
+                sentEmails.add(contact.email!);
+                console.log(`[Contact Email] Dispatching to contact ${contact.email}...`)
+                success = await sendEmailAlert(contact.email!, locationLink, userName, userEmail)
+                console.log(`[Contact Email] Result for ${contact.email}: ${success}`)
+              }
 
-                if (!success && contact.phone_e164) {
-                  // Only try SMS fallback if both Email and WhatsApp failed
-                  const phoneSuccess = await phonePromise
-                  if (!phoneSuccess) {
-                    console.log(`Email failed for ${contact.email}, trying MSG91 SMS fallback...`)
-                    success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
-                  }
+              if (!success && contact.phone_e164) {
+                // Only try SMS fallback if both Email and WhatsApp failed
+                const phoneSuccess = await phonePromise
+                if (!phoneSuccess) {
+                  console.log(`Email failed for ${contact.email}, trying MSG91 SMS fallback...`)
+                  success = await sendMsg91Sms(contact.phone_e164!, userName, locationLink)
                 }
+              }
+              if (emailDelivery) {
                 await admin.from('sos_event_deliveries').update({
                   status: success ? 'delivered' : 'failed',
                   delivered_at: success ? new Date().toISOString() : null,
                   failure_reason: success ? null : 'Email delivery failed'
-                }).eq('id', emailDelivery.id)
-              })()
-            )
-          }
+                }).eq('id', emailDelivery.id).catch(e => console.warn('Delivery update err:', e))
+              }
+            })()
+          )
         }
       }
+
+      console.log(`[SOS Dispatch] Dispatching to ${rakshakDetails.length} Rakshaks. Details: ${JSON.stringify(rakshakDetails.map(r => ({ id: r.profile_id, email: r.email, phone: r.phone, name: r.displayName })))}`)
 
       for (const rDetails of rakshakDetails) {
         // Dispatch to Rakshak's updated profile phone number via WhatsApp / SMS
@@ -569,25 +622,30 @@ Deno.serve(async (request: Request) => {
         }
 
         if (rDetails.email) {
+          console.log(`[Rakshak Email] Preparing to send SOS email to Rakshak "${rDetails.displayName}" at ${rDetails.email}`)
           const emailDelivery = insertedDeliveries.find(d => d.rakshak_id === rDetails.profile_id && d.channel === 'email')
-          if (emailDelivery) {
-            promises.push(
-              (async () => {
-                let success = false;
-                if (sentEmails.has(rDetails.email)) {
-                  success = true;
-                } else {
-                  sentEmails.add(rDetails.email);
-                  success = await sendEmailAlert(rDetails.email, locationLink, userName, userEmail);
-                }
+          promises.push(
+            (async () => {
+              let success = false;
+              if (sentEmails.has(rDetails.email)) {
+                console.log(`[Rakshak Email] Already sent to ${rDetails.email}, marking as delivered`)
+                success = true;
+              } else {
+                sentEmails.add(rDetails.email);
+                console.log(`[Rakshak Email] Calling sendEmailAlert for ${rDetails.email}...`)
+                const result = await sendEmailAlert(rDetails.email, locationLink, userName, userEmail);
+                success = result === true;
+                console.log(`[Rakshak Email] sendEmailAlert returned ${result} for ${rDetails.email}, success=${success}`)
+              }
+              if (emailDelivery) {
                 await admin.from('sos_event_deliveries').update({
                   status: success ? 'delivered' : 'failed',
                   delivered_at: success ? new Date().toISOString() : null,
-                  failure_reason: success ? null : 'API Request Failed'
-                }).eq('id', emailDelivery.id)
-              })().catch(err => console.error('Rakshak Email promise error:', err))
-            )
-          }
+                  failure_reason: success ? null : 'Email delivery failed'
+                }).eq('id', emailDelivery.id).catch(err => console.warn('Delivery update err:', err))
+              }
+            })().catch(err => console.error('Rakshak Email promise error:', err))
+          )
         }
       }
 

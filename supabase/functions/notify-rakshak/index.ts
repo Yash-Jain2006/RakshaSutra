@@ -75,6 +75,7 @@ async function sendAlertEmail(
     </div>
   `
 
+  console.log(`[Notify Rakshak] Attempting email from="${from}" to="${toEmail}" subject="${requesterName} needs your help"`)
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -86,12 +87,12 @@ async function sendAlertEmail(
         html,
       }),
     })
+    const resBody = await res.text()
     if (!res.ok) {
-      const errText = await res.text()
-      console.error('[Notify Rakshak] Email failed:', res.status, errText)
+      console.error(`[Notify Rakshak] Email FAILED to ${toEmail}. Status: ${res.status}. Response: ${resBody}`)
       return false
     }
-    console.log('[Notify Rakshak] Alert email sent to', toEmail)
+    console.log(`[Notify Rakshak] Email SUCCESS to ${toEmail}. Response: ${resBody}`)
     return true
   } catch (e) {
     console.error('[Notify Rakshak] Email network error:', e)
@@ -134,22 +135,22 @@ Deno.serve(async (request: Request) => {
     // Use service key to fetch Rakshak's profile (bypasses RLS)
     const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
 
-    // Get the Rakshak's profile with joined profiles table
+    // Get the Rakshak's profile
     const { data: rakshakProfile, error: rakshakError } = await admin
       .from('rakshak_profiles')
-      .select('profile_id, coverage_area, profiles!rakshak_profiles_profile_id_fkey(display_name, id)')
+      .select('profile_id, coverage_area')
       .eq('profile_id', rakshakId)
-      .single()
+      .maybeSingle()
 
-    if (rakshakError || !rakshakProfile) {
-      console.error('[Notify Rakshak] Rakshak profile not found:', rakshakError)
-      return json({ error: 'Rakshak not found', details: rakshakError?.message }, 404)
-    }
+    const { data: profileData } = await admin
+      .from('profiles')
+      .select('display_name, id')
+      .eq('id', rakshakId)
+      .maybeSingle()
 
-    console.log('[Notify Rakshak] Found rakshak profile:', JSON.stringify(rakshakProfile))
+    console.log('[Notify Rakshak] Found rakshak profile:', JSON.stringify(rakshakProfile), 'profileData:', JSON.stringify(profileData))
 
-    // Get the Rakshak's email from auth.users using the REST API directly
-    // (admin.auth.admin.getUserById can have issues with response shape)
+    // Get the Rakshak's email from auth.users using REST API directly or getUserById
     let rakshakEmail = ''
     try {
       const authRes = await fetch(`${supabaseUrl}/auth/v1/admin/users/${rakshakId}`, {
@@ -163,10 +164,20 @@ Deno.serve(async (request: Request) => {
         rakshakEmail = authUser.email || ''
         console.log('[Notify Rakshak] Got email via REST:', rakshakEmail)
       } else {
-        console.error('[Notify Rakshak] Auth REST failed:', authRes.status, await authRes.text())
+        console.warn('[Notify Rakshak] Auth REST non-OK:', authRes.status)
       }
     } catch (e) {
       console.error('[Notify Rakshak] Auth REST error:', e)
+    }
+
+    if (!rakshakEmail) {
+      try {
+        const { data: authUser } = await admin.auth.admin.getUserById(rakshakId)
+        rakshakEmail = authUser?.user?.email || ''
+        console.log('[Notify Rakshak] Got email via getUserById fallback:', rakshakEmail)
+      } catch (fallbackErr) {
+        console.error('[Notify Rakshak] getUserById fallback failed:', fallbackErr)
+      }
     }
 
     if (!rakshakEmail) {
