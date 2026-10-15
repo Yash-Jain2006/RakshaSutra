@@ -249,29 +249,47 @@ Deno.serve(async (request: Request) => {
   const frontendUrl = payload?.frontendUrl
   if (typeof eventId !== 'string') return json({ error: 'eventId is required' }, 400)
 
-  // Fetch the active SOS event and the user's name & updated profile phone
-  const { data: event, error: eventError } = await caller
+  const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
+
+  console.log(`[SOS Dispatch] Incoming dispatch request for event ${eventId} from authenticated user ${user.id} (${user.email})`)
+
+  // Fetch the active SOS event directly using admin (bypasses RLS & avoids join naming failures)
+  const { data: event, error: eventError } = await admin
     .from('sos_events')
-    .select('id, user_id, status, latitude, longitude, profiles!inner(display_name, phone)')
+    .select('id, user_id, status, latitude, longitude')
     .eq('id', eventId)
-    .eq('status', 'active')
     .single()
 
-  if (eventError || !event || event.user_id !== user.id) return json({ error: 'Active SOS event not found' }, 404)
+  if (eventError || !event) {
+    console.error(`[SOS Dispatch] Active SOS event ${eventId} not found:`, eventError)
+    return json({ error: 'Active SOS event not found', details: eventError?.message }, 404)
+  }
 
-  const userName = user.user_metadata?.display_name || event.profiles?.display_name || (user.email ? user.email.split('@')[0] : 'A Raksha Sutra user')
-  const userPhone = event.profiles?.phone || user.phone || ''
+  // Security check: Verify caller owns this SOS event
+  if (event.user_id !== user.id) {
+    console.error(`[SOS Dispatch] User ${user.id} is not owner of event ${eventId} (owner=${event.user_id})`)
+    return json({ error: 'Unauthorized for this SOS event' }, 403)
+  }
+
+  // Fetch the user's profile
+  const { data: userProfile } = await admin
+    .from('profiles')
+    .select('display_name, phone')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const userName = userProfile?.display_name || user.user_metadata?.display_name || (user.email ? user.email.split('@')[0] : 'A Raksha Sutra user')
+  const userPhone = userProfile?.phone || user.phone || ''
   const userEmail = user.email || ''
   const locationLink = `${frontendUrl || Deno.env.get('FRONTEND_URL') || 'https://rakshasutra.in'}/track/${event.id}`
 
-  const admin = createClient(supabaseUrl, secretKey, { auth: { persistSession: false, autoRefreshToken: false } })
   // Idempotency check: only skip if there are deliveries that were actually sent (not all failed)
-  const { data: existing } = await admin.from('sos_event_deliveries').select('id, status').eq('sos_event_id', event.id)
+  const { data: existing } = await admin.from('sos_event_deliveries').select('id, status, recipient_type, channel, recipient_name').eq('sos_event_id', event.id)
   if (existing?.length) {
     const hasAnySuccess = existing.some((d: any) => d.status === 'delivered' || d.status === 'queued')
     if (hasAnySuccess) {
-      console.log(`[SOS Dispatch] Idempotency: ${existing.length} deliveries already exist with at least one success/queued. Skipping.`)
-      return json({ eventId: event.id, idempotent: true, deliveriesQueued: existing.length })
+      console.log(`[SOS Dispatch] Idempotency: ${existing.length} deliveries already exist with at least one success/queued. Returning existing.`)
+      return json({ eventId: event.id, idempotent: true, deliveriesQueued: existing.length, deliveries: existing })
     }
     // All previous deliveries failed — delete them and retry
     console.log(`[SOS Dispatch] All ${existing.length} previous deliveries failed. Deleting and retrying...`)
