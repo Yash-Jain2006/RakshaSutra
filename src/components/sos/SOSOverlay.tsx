@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Check, Download, Phone, ShieldCheck, Users, Volume2, X, StopCircle } from 'lucide-react';
+import { Camera, Check, Phone, ShieldCheck, Users, Volume2, X, StopCircle } from 'lucide-react';
 import type { EmergencyContact, SosDelivery } from '../../types/models';
-import { saveSosEvidenceToLocal, triggerBlobDownload } from '../../utils/sosEvidenceStorage';
+import { saveSosEvidenceToLocal } from '../../utils/sosEvidenceStorage';
 
 interface SOSOverlayProps {
   contacts: EmergencyContact[];
@@ -19,7 +19,6 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
   isOffline = false,
 }) => {
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
-  const [savedLocally, setSavedLocally] = useState(false);
   const formattedTime = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
 
   // Filter deliveries by type
@@ -167,7 +166,6 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
 
               try {
                 await saveSosEvidenceToLocal(blob, resolvedMime);
-                setSavedLocally(true);
               } catch (saveErr) {
                 console.error('[SOS Recording] Error saving evidence:', saveErr);
               }
@@ -199,24 +197,6 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
       videoRef.current.srcObject = stream;
     }
   }, [stream]);
-
-  const handleSaveRecordingNow = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      try {
-        mediaRecorderRef.current.requestData();
-      } catch {}
-    }
-    setTimeout(() => {
-      if (chunksRef.current.length > 0) {
-        const isVideo = perms.video;
-        const mimeType = isVideo ? 'video/webm' : 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        triggerBlobDownload(blob, mimeType);
-        saveSosEvidenceToLocal(blob, mimeType);
-        setSavedLocally(true);
-      }
-    }, 150);
-  };
 
   return (
     <div
@@ -266,16 +246,6 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
           <button aria-label="GPS Status" disabled>
             <span className={`perm-dot ${perms.gps ? 'granted' : 'denied'}`} />
             GPS Live
-          </button>
-          <button
-            type="button"
-            aria-label="Save evidence locally"
-            onClick={handleSaveRecordingNow}
-            style={{ cursor: 'pointer', background: savedLocally ? 'rgba(34, 197, 94, 0.2)' : undefined }}
-            title="Save / download recording to device"
-          >
-            {savedLocally ? <Check size={15} color="#22c55e" /> : <Download size={15} />}
-            {savedLocally ? 'Saved' : 'Save Video'}
           </button>
         </div>
       </div>
