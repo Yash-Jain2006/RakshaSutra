@@ -447,7 +447,7 @@ export function App() {
           filter: `rakshak_id=eq.${user.id}`,
         },
         async (payload) => {
-          if (payload.new.recipient_type === 'rakshak' && payload.new.status === 'queued') {
+          if (payload.new.recipient_type === 'rakshak' && (payload.new.status === 'queued' || payload.new.status === 'delivered')) {
             try {
               const sosDetails = await getSosEventDetails(payload.new.sos_event_id);
               if (sosDetails.status === 'active') {
