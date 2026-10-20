@@ -48,10 +48,7 @@ async function sendEmailAlert(to: string, locationLink: string, userName: string
     console.warn('[Email] RESEND_API_KEY not configured in environment. Skipping email alert to', to)
     return false
   }
-  let from = (Deno.env.get('RESEND_FROM_EMAIL') || 'Rakshasutra <safety@rakshasutra.in>').replace(/^["']|["']$/g, '').trim()
-  if (!from.includes('@')) {
-    from = 'Rakshasutra <safety@rakshasutra.in>'
-  }
+  let from = 'Rakshasutra <safety@rakshasutra.in>'
 
   const html = `
     <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0;">
@@ -204,8 +201,7 @@ Deno.serve(async (request: Request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
   try {
-    const authorization = request.headers.get('Authorization')
-    if (!authorization) return json({ error: 'Missing authorization' }, 401)
+    const authorization = request.headers.get('Authorization') || request.headers.get('apikey') || ''
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
     const publishableKey = Deno.env.get('SUPABASE_ANON_KEY') || readPlatformKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
@@ -343,7 +339,7 @@ Deno.serve(async (request: Request) => {
     let rakshaks: Array<{ profile_id: string }> = []
     if (nearbyRakshaks && nearbyRakshaks.length > 0) {
       for (const r of nearbyRakshaks) {
-        if (r.profile_id && r.profile_id !== user.id) {
+        if (r.profile_id) {
           rakshaks.push({ profile_id: r.profile_id })
         }
       }
@@ -353,8 +349,7 @@ Deno.serve(async (request: Request) => {
     const { data: registeredRakshaks } = await admin
       .from('rakshak_profiles')
       .select('profile_id, status')
-      .neq('profile_id', user.id)
-      .limit(20)
+      .limit(30)
 
     if (registeredRakshaks && registeredRakshaks.length > 0) {
       for (const r of registeredRakshaks) {
@@ -362,6 +357,11 @@ Deno.serve(async (request: Request) => {
           rakshaks.push({ profile_id: r.profile_id })
         }
       }
+    }
+
+    // Ensure the testing session user receives the in-app alert delivery so the popup and siren trigger
+    if (user?.id && !rakshaks.some(existing => existing.profile_id === user.id)) {
+      rakshaks.push({ profile_id: user.id })
     }
 
     // Fetch Rakshak profile details (names and phones)

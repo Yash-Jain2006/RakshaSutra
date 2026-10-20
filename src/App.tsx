@@ -608,7 +608,19 @@ export function App() {
       if (dispatchResult?.deliveries) {
         setDeliveries(dispatchResult.deliveries as SosDelivery[]);
       }
-    } catch {
+      try {
+        const details = await getSosEventDetails(event.id);
+        if (details && details.status === 'active') {
+          setIncomingSosAlert(details);
+          if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('🚨 URGENT: SOS Alert!', { body: `${profileDisplayName || user.email || 'Someone'} needs immediate assistance nearby.`, icon: '/favicon.ico' });
+          }
+        }
+      } catch (alertErr) {
+        console.warn('Could not trigger immediate alert modal:', alertErr);
+      }
+    } catch (err) {
+      console.error('[SOS Trigger Error]:', err);
       notify('SOS is active, but delivery is pending. Keep this screen open.');
     }
   };

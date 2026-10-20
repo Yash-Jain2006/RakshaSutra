@@ -301,10 +301,10 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
                       <b>{delivery.recipient_name}</b>
                       <small>{delivery.recipient_sub || 'Verified Volunteer'}</small>
                     </div>
-                    <i className={delivery.status}>
+                    <i className={delivery.status === 'delivered' ? 'sent' : delivery.status}>
                       {delivery.status === 'acknowledged'
                         ? 'Accepted'
-                        : delivery.status === 'sent'
+                        : (delivery.status === 'sent' || delivery.status === 'delivered')
                           ? 'Alert Sent'
                           : 'Queued'}
                     </i>
