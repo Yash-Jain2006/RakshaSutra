@@ -374,16 +374,25 @@ Deno.serve(async (request: Request) => {
     if (r.profile_id && r.profile_id !== user.id) rakshakIdSet.add(r.profile_id)
   }
 
+  const callerEmail = userEmail ? userEmail.trim().toLowerCase() : ''
+  const filteredContacts = allContacts.filter(c => {
+    if (callerEmail && c.email && c.email.trim().toLowerCase() === callerEmail) {
+      console.log(`[SOS Dispatch] Skipping caller's own email from alert contacts: ${c.email}`)
+      return false
+    }
+    return true
+  })
+
   let rakshaks = Array.from(rakshakIdSet).map(id => ({ profile_id: id }))
-  console.log(`[SOS Dispatch] Found ${allContacts.length} contacts and ${rakshaks.length} verified responder Rakshaks`)
-  console.log(`[SOS Dispatch] Contact emails: ${allContacts.map(c => c.email).filter(Boolean).join(', ')}`)
-  console.log(`[SOS Dispatch] Contact phones: ${allContacts.map(c => c.phone_e164).filter(Boolean).join(', ')}`)
+  console.log(`[SOS Dispatch] Found ${filteredContacts.length} contacts and ${rakshaks.length} verified responder Rakshaks`)
+  console.log(`[SOS Dispatch] Contact emails: ${filteredContacts.map(c => c.email).filter(Boolean).join(', ')}`)
+  console.log(`[SOS Dispatch] Contact phones: ${filteredContacts.map(c => c.phone_e164).filter(Boolean).join(', ')}`)
 
   const isUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
   const deliveries: any[] = []
 
   // Queue Contact Deliveries - only push to DB deliveries if valid contact ID exists (to respect DB foreign key & non-null check constraints)
-  for (const contact of allContacts) {
+  for (const contact of filteredContacts) {
     if (!contact.id || !isUuid(contact.id)) {
       console.log(`[SOS Dispatch] Contact ${contact.email || contact.phone_e164} does not have DB UUID id, will dispatch directly without DB queue row`)
       continue
@@ -467,7 +476,7 @@ Deno.serve(async (request: Request) => {
             const userRes = await admin.auth.admin.getUserById(r.profile_id)
             email = userRes?.data?.user?.email || ''
             phone = phone || userRes?.data?.user?.phone || null
-          } catch {}
+          } catch { }
         }
 
         rakshakDetails.push({ profile_id: r.profile_id, email, phone, displayName })
@@ -520,11 +529,14 @@ Deno.serve(async (request: Request) => {
 
       const sentPhones = new Set<string>()
       const sentEmails = new Set<string>()
+      if (callerEmail) {
+        sentEmails.add(callerEmail)
+      }
 
-      for (const contact of allContacts) {
+      for (const contact of filteredContacts) {
         const phoneSuffix = userPhone ? `\n\n📞 Caller Phone: ${userPhone}` : ''
         const message = `🚨 *URGENT SOS ALERT* 🚨\n\n*${userName}* has triggered an SOS and needs immediate assistance.${phoneSuffix}\n\nView their live location here: ${locationLink}`
-        
+
         let phonePromise = Promise.resolve(false)
         if (contact.phone_e164) {
           const smsDelivery = insertedDeliveries.find(d =>
@@ -564,7 +576,7 @@ Deno.serve(async (request: Request) => {
             return success
           })()
           phonePromise = p
-          promises.push(p.then(() => {}))
+          promises.push(p.then(() => { }))
         }
 
         if (contact.email) {
@@ -665,16 +677,6 @@ Deno.serve(async (request: Request) => {
             })().catch(err => console.error('Rakshak Email promise error:', err))
           )
         }
-      }
-
-      // Also dispatch confirmation email to the caller so they get immediate alert confirmation in their own inbox
-      if (userEmail && !sentEmails.has(userEmail)) {
-        sentEmails.add(userEmail);
-        promises.push(
-          sendEmailAlert(userEmail, locationLink, userName, userEmail)
-            .then(ok => console.log(`[Caller Confirmation] Email sent to ${userEmail}:`, ok))
-            .catch(err => console.error('Error sending confirmation email to caller:', err))
-        );
       }
 
       await Promise.allSettled(promises)

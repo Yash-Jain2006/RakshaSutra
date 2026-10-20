@@ -12,3 +12,8 @@ __pycache__/
 *.pyc
 task.md
 .vercel
+create_admin.js
+check_coords.js
+fix_coords.js
+debug.cjs
+test*.*
