@@ -37,26 +37,14 @@ export function getLocationFreshness(lastLocationAt: string | number | Date | nu
   const now = Date.now();
   const ageSeconds = Math.max(0, Math.floor((now - timestamp) / 1000));
 
-  if (ageSeconds <= 15) {
+  if (ageSeconds <= 60) {
     return {
       level: 'live',
-      label: ageSeconds <= 2 ? 'Updated just now' : `Updated ${ageSeconds}s ago`,
-      badgeText: 'Live',
+      label: ageSeconds <= 5 ? 'Updated just now' : `Updated ${ageSeconds}s ago`,
+      badgeText: 'Current',
       color: '#15803d',
       bg: '#dcfce7',
       dotColor: '#22c55e',
-      ageSeconds,
-    };
-  }
-
-  if (ageSeconds <= 60) {
-    return {
-      level: 'recent',
-      label: `Updated ${ageSeconds}s ago`,
-      badgeText: 'Recent',
-      color: '#0369a1',
-      bg: '#e0f2fe',
-      dotColor: '#0ea5e9',
       ageSeconds,
     };
   }

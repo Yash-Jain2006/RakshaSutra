@@ -438,7 +438,8 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
   const freshness: FreshnessState = getLocationFreshness(data.last_location_at);
   const formatEtaDuration = (seconds: number | null | undefined): string => {
-    if (!seconds || seconds <= 0) return '—';
+    if (seconds == null || isNaN(seconds)) return '—';
+    if (seconds <= 30) return '< 1 min';
     const totalMins = Math.max(1, Math.round(seconds / 60));
     if (totalMins < 60) return `${totalMins} min`;
     const hrs = Math.floor(totalMins / 60);
@@ -470,9 +471,13 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     : (calculatedRoute?.durationSeconds ?? data.eta_seconds ?? null);
 
   // Robust ETA calculation based on mode speed if duration is missing
-  if ((!effectiveEtaSeconds || effectiveEtaSeconds <= 0) && effectiveDistanceMeters && effectiveDistanceMeters > 0) {
-    const speedMps = transportMode === 'driving' ? 11.1 : transportMode === 'cycling' ? 4.2 : 1.38;
-    effectiveEtaSeconds = Math.max(30, Math.round(effectiveDistanceMeters / speedMps));
+  if (effectiveDistanceMeters != null && !isNaN(effectiveDistanceMeters)) {
+    if (effectiveDistanceMeters <= 25) {
+      effectiveEtaSeconds = 0;
+    } else if (!effectiveEtaSeconds || effectiveEtaSeconds <= 0) {
+      const speedMps = transportMode === 'driving' ? 11.1 : transportMode === 'cycling' ? 4.2 : 1.38;
+      effectiveEtaSeconds = Math.max(30, Math.round(effectiveDistanceMeters / speedMps));
+    }
   }
 
   const formatDistanceDisplay = (meters: number | null | undefined): string => {
@@ -504,11 +509,6 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
               Marked Safe
-            </span>
-          ) : isSos ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#fee2e2', color: '#dc2626' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span>
-              Live Emergency
             </span>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: freshness.bg, color: freshness.color }}>
