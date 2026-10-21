@@ -56,6 +56,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   const [viewerLocation, setViewerLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [calculatedRoute, setCalculatedRoute] = useState<RouteResult | null>(null);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
+  const [transportMode, setTransportMode] = useState<TransportMode>('walking');
   const routeCalculatedRef = useRef(false);
   const hasFittedBoundsRef = useRef(false);
   // Track last recalc position to avoid recalculating when user hasn't moved
@@ -188,7 +189,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     };
   }, [trackingId]);
 
-  // Dynamic road route resolution – recalculates on every position update for journey mode
+  // Dynamic road route resolution – recalculates on position or mode changes
   useEffect(() => {
     if (!data || !data.latitude || !data.longitude) return;
 
@@ -197,7 +198,8 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     if (!isSos) {
       // Journey mode: recalculate whenever position changes (up to 20m movement)
       if (data.destination_latitude && data.destination_longitude) {
-        const posKey = `${data.latitude.toFixed(4)},${data.longitude.toFixed(4)}`;
+        const mode = (data.transport_mode as TransportMode) || transportMode || 'walking';
+        const posKey = `${data.latitude.toFixed(4)},${data.longitude.toFixed(4)}->${mode}`;
         if (lastRouteFromRef.current === posKey) return; // same position, skip
         lastRouteFromRef.current = posKey;
         setCalculatingRoute(true);
@@ -205,7 +207,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           .calculateRoute(
             [data.latitude, data.longitude],
             [data.destination_latitude, data.destination_longitude],
-            (data.transport_mode as any) || 'walking'
+            mode
           )
           .then((res) => {
             setCalculatedRoute(res);
@@ -215,20 +217,24 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           })
           .finally(() => setCalculatingRoute(false));
       }
-    } else if (isSos && viewerLocation && !routeCalculatedRef.current) {
-      routeCalculatedRef.current = true;
+    } else if (isSos && viewerLocation) {
+      const posKey = `sos:${viewerLocation.lat.toFixed(4)},${viewerLocation.lng.toFixed(4)}->${data.latitude.toFixed(4)},${data.longitude.toFixed(4)}:${transportMode}`;
+      if (lastRouteFromRef.current === posKey) return;
+      lastRouteFromRef.current = posKey;
+      setCalculatingRoute(true);
       defaultRoutingProvider
         .calculateRoute(
           [viewerLocation.lat, viewerLocation.lng],
           [data.latitude, data.longitude],
-          'driving'
+          transportMode
         )
         .then((res) => {
           setCalculatedRoute(res);
         })
         .catch((err) => {
           console.warn('[PublicTracking] Viewer to SOS victim route error:', err);
-        });
+        })
+        .finally(() => setCalculatingRoute(false));
     }
   }, [
     data?.destination_latitude,
@@ -238,7 +244,8 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     data?.transport_mode,
     data?.status,
     data?.type,
-    viewerLocation
+    viewerLocation,
+    transportMode,
   ]);
 
   // Leaflet map setup and marker synchronisation
@@ -443,40 +450,45 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   const isSosEnded = isSos && (data.status === 'safe' || data.status === 'cancelled' || data.status === 'resolved');
   const isArrived = data.status === 'arrived' || (!isSos && (data.status === 'safe' || data.status === 'cancelled'));
 
-  // If SOS, we want the distance/ETA between Viewer and User, NOT the User's Journey ETA
-  let effectiveEtaSeconds = isSos 
-    ? (calculatedRoute?.durationSeconds ?? null)
-    : (calculatedRoute?.durationSeconds ?? data.eta_seconds ?? null);
-
+  // Calculate effective distance
   let effectiveDistanceMeters = isSos
     ? (calculatedRoute?.distanceMeters ?? null)
     : (calculatedRoute?.distanceMeters ?? data.remaining_distance_meters ?? null);
 
-  // Fallback to live straight-line distance for SOS if OSRM route is missing/pending
-  if (isSos && viewerLocation && !effectiveDistanceMeters && data.latitude && data.longitude) {
-    const R = 6371e3; // metres
-    const lat1 = viewerLocation.lat * Math.PI/180;
-    const lat2 = (data.latitude as number) * Math.PI/180;
-    const dLat = ((data.latitude as number) - viewerLocation.lat) * Math.PI/180;
-    const dLon = ((data.longitude as number) - viewerLocation.lng) * Math.PI/180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    effectiveDistanceMeters = R * c;
-  }
-
-  // Fallback to straight-line distance with speed factor for Journey if road route is pending/missing
-  if (!isSos && !effectiveDistanceMeters && data.latitude && data.longitude && data.destination_latitude && data.destination_longitude) {
-    const straightDist = haversineDistanceMeters(data.latitude, data.longitude, data.destination_latitude, data.destination_longitude);
+  // Fallback to straight-line distance if road routing is pending or failed
+  if (isSos && viewerLocation && (!effectiveDistanceMeters || isNaN(effectiveDistanceMeters)) && data.latitude && data.longitude) {
+    const straightDist = haversineDistanceMeters(viewerLocation.lat, viewerLocation.lng, data.latitude, data.longitude);
     effectiveDistanceMeters = Math.round(straightDist * 1.35); // 1.35x road tortuosity
-    const speedMps = data.transport_mode === 'driving' ? 11.1 : data.transport_mode === 'cycling' ? 4.2 : 1.38;
-    if (!effectiveEtaSeconds) {
-      effectiveEtaSeconds = Math.round(effectiveDistanceMeters / speedMps);
-    }
+  } else if (!isSos && (!effectiveDistanceMeters || isNaN(effectiveDistanceMeters)) && data.latitude && data.longitude && data.destination_latitude && data.destination_longitude) {
+    const straightDist = haversineDistanceMeters(data.latitude, data.longitude, data.destination_latitude, data.destination_longitude);
+    effectiveDistanceMeters = Math.round(straightDist * 1.35);
   }
 
-  const distKm = effectiveDistanceMeters ? (effectiveDistanceMeters / 1000).toFixed(1) : null;
-  const etaDisplay = calculatingRoute && !isSos && !effectiveEtaSeconds ? 'Calculating…' : formatEtaDuration(effectiveEtaSeconds);
-  const distDisplay = calculatingRoute && !isSos && !distKm ? 'Calculating…' : (distKm ? `${distKm} km` : '—');
+  // Calculate effective ETA
+  let effectiveEtaSeconds = isSos 
+    ? (calculatedRoute?.durationSeconds ?? null)
+    : (calculatedRoute?.durationSeconds ?? data.eta_seconds ?? null);
+
+  // Robust ETA calculation based on mode speed if duration is missing
+  if ((!effectiveEtaSeconds || effectiveEtaSeconds <= 0) && effectiveDistanceMeters && effectiveDistanceMeters > 0) {
+    const speedMps = transportMode === 'driving' ? 11.1 : transportMode === 'cycling' ? 4.2 : 1.38;
+    effectiveEtaSeconds = Math.max(30, Math.round(effectiveDistanceMeters / speedMps));
+  }
+
+  const formatDistanceDisplay = (meters: number | null | undefined): string => {
+    if (meters == null || isNaN(meters)) return '—';
+    if (meters < 100) return `${Math.round(meters)} m`;
+    if (meters < 1000) return `${Math.round(meters / 10) * 10} m`;
+    return `${(meters / 1000).toFixed(1)} km`;
+  };
+
+  const distDisplay = formatDistanceDisplay(effectiveDistanceMeters);
+  const etaDisplay = isSosEnded ? 'Safe' : (calculatingRoute && !effectiveEtaSeconds ? 'Calculating…' : formatEtaDuration(effectiveEtaSeconds));
+
+  const handleToggleMode = () => {
+    const nextMode: TransportMode = transportMode === 'walking' ? 'driving' : transportMode === 'driving' ? 'cycling' : 'walking';
+    setTransportMode(nextMode);
+  };
 
   return (
     <div className="public-tracking-container" style={{ position: 'relative', height: '100vh', display: 'flex', flexDirection: 'column', background: '#f8fafc' }}>
@@ -492,6 +504,11 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
               Marked Safe
+            </span>
+          ) : isSos ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#fee2e2', color: '#dc2626' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444' }}></span>
+              Live Emergency
             </span>
           ) : (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: freshness.bg, color: freshness.color }}>
@@ -573,65 +590,44 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           </span>
         </div>
 
-        {/* Metric Columns: SOS vs Journey */}
-        {isSos ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <div>
-              <span style={{ fontSize: '16px', fontWeight: 800, color: isSosEnded ? '#16a34a' : '#ef4444', display: 'block' }}>
-                {isSosEnded ? 'Safe' : 'Active'}
-              </span>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Alert Status</small>
-            </div>
-
-            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
-
-            <div>
-              <span style={{ fontSize: '16px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-                {distDisplay}
-              </span>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance To User</small>
-            </div>
-
-            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
-
-            <div>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', display: 'block' }}>
-                {isSosEnded ? 'Resolved' : 'High Priority'}
-              </span>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Severity</small>
-            </div>
+        {/* 3 Metric Columns: ETA, DISTANCE, and MODE for both SOS and Journey */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+          <div>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: isSosEnded ? '#16a34a' : '#6366f1', display: 'block' }}>
+              {etaDisplay}
+            </span>
+            <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>
+              {isSos ? 'ETA To User' : 'ETA'}
+            </small>
           </div>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-            <div>
-              <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-                {etaDisplay}
-              </span>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>ETA</small>
-            </div>
 
-            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+          <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
 
-            <div>
-              <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-                {distDisplay}
-              </span>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance</small>
-            </div>
-
-            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
-
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
-                  {data.transport_mode === 'driving' ? 'Driving' : data.transport_mode === 'cycling' ? 'Cycling' : 'Walking'}
-                </span>
-                {data.transport_mode === 'driving' ? <Car size={15} color="#64748b" /> : data.transport_mode === 'cycling' ? <Bike size={15} color="#64748b" /> : <Footprints size={15} color="#64748b" />}
-              </div>
-              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Mode</small>
-            </div>
+          <div>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
+              {distDisplay}
+            </span>
+            <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>
+              {isSos ? 'Distance To User' : 'Distance'}
+            </small>
           </div>
-        )}
+
+          <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+
+          <div 
+            onClick={handleToggleMode}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+            title="Click to toggle mode (Walking / Driving / Cycling)"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', textTransform: 'capitalize' }}>
+                {transportMode}
+              </span>
+              {transportMode === 'driving' ? <Car size={15} color="#6366f1" /> : transportMode === 'cycling' ? <Bike size={15} color="#6366f1" /> : <Footprints size={15} color="#6366f1" />}
+            </div>
+            <small style={{ fontSize: '10px', color: '#6366f1', textTransform: 'uppercase', fontWeight: 600 }}>Mode (Tap)</small>
+          </div>
+        </div>
 
         {/* Freshness Subtitle */}
         <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '10px', textAlign: 'right', display: 'flex', justifyContent: 'space-between' }}>
