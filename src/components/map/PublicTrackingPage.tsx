@@ -438,8 +438,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
 
   const freshness: FreshnessState = getLocationFreshness(data.last_location_at);
   const formatEtaDuration = (seconds: number | null | undefined): string => {
-    if (seconds == null || isNaN(seconds)) return '—';
-    if (seconds <= 30) return '< 1 min';
+    if (!seconds || seconds <= 0) return '—';
     const totalMins = Math.max(1, Math.round(seconds / 60));
     if (totalMins < 60) return `${totalMins} min`;
     const hrs = Math.floor(totalMins / 60);
@@ -471,10 +470,10 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     : (calculatedRoute?.durationSeconds ?? data.eta_seconds ?? null);
 
   // Robust ETA calculation based on mode speed if duration is missing
-  if (effectiveDistanceMeters != null && !isNaN(effectiveDistanceMeters)) {
+  if ((!effectiveEtaSeconds || effectiveEtaSeconds <= 0) && effectiveDistanceMeters != null) {
     if (effectiveDistanceMeters <= 25) {
       effectiveEtaSeconds = 0;
-    } else if (!effectiveEtaSeconds || effectiveEtaSeconds <= 0) {
+    } else {
       const speedMps = transportMode === 'driving' ? 11.1 : transportMode === 'cycling' ? 4.2 : 1.38;
       effectiveEtaSeconds = Math.max(30, Math.round(effectiveDistanceMeters / speedMps));
     }
@@ -488,7 +487,11 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
   };
 
   const distDisplay = formatDistanceDisplay(effectiveDistanceMeters);
-  const etaDisplay = isSosEnded ? 'Safe' : (calculatingRoute && !effectiveEtaSeconds ? 'Calculating…' : formatEtaDuration(effectiveEtaSeconds));
+  const etaDisplay = isSosEnded 
+    ? 'Safe' 
+    : (effectiveDistanceMeters != null && effectiveDistanceMeters <= 25)
+    ? '< 1 min'
+    : (calculatingRoute && !effectiveEtaSeconds ? 'Calculating…' : formatEtaDuration(effectiveEtaSeconds));
 
   const handleToggleMode = () => {
     const nextMode: TransportMode = transportMode === 'walking' ? 'driving' : transportMode === 'driving' ? 'cycling' : 'walking';
@@ -504,7 +507,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
             {isSos ? (isSosEnded ? 'Emergency Resolved' : 'Live Emergency SOS Tracking') : 'Live Safety Tracking'}
           </span>
 
-          {/* Unified Freshness / Resolution Badge */}
+          {/* Unified Freshness / Resolution Badge: Live, Recent, Delayed, Stale */}
           {isSosEnded ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
