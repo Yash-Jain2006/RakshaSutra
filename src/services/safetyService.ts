@@ -281,7 +281,8 @@ export async function acceptSosEvent(eventId: string, rakshakId: string) {
 }
 
 export async function getSosEventDetails(eventId: string) {
-  const { data, error } = await configuredClient()
+  const client = configuredClient();
+  const { data, error } = await client
     .from("sos_events")
     .select(`
       id,
@@ -292,9 +293,19 @@ export async function getSosEventDetails(eventId: string) {
       profiles:user_id ( display_name )
     `)
     .eq("id", eventId)
+    .maybeSingle();
+
+  if (!error && data) return data;
+
+  // Fallback if the join fails due to RLS or foreign key alias
+  const { data: fallback, error: fbErr } = await client
+    .from("sos_events")
+    .select("id, user_id, latitude, longitude, status")
+    .eq("id", eventId)
     .single();
-  if (error) throw error;
-  return data;
+
+  if (fbErr) throw fbErr;
+  return { ...fallback, profiles: { display_name: 'Someone' } };
 }
 
 export async function getRakshakDetails(rakshakId: string) {

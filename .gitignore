@@ -17,3 +17,4 @@ check_coords.js
 fix_coords.js
 debug.cjs
 test*.*
+supabase/.temp/

@@ -359,6 +359,30 @@ Deno.serve(async (request: Request) => {
       }
     }
 
+    // Also look up Supabase auth users for designated email recipients
+    // so they get in-app delivery rows for the Realtime popup notification
+    const designatedEmails = emailDispatchList
+      .map(e => e.to.trim().toLowerCase())
+      .filter(e => e !== callerEmail) // exclude caller
+    
+    let allAuthUsers: any[] = []
+    try {
+      const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 100 })
+      if (usersData?.users) allAuthUsers = usersData.users
+    } catch (lookupErr) {
+      console.warn('[SOS Dispatch] Could not list auth users:', lookupErr)
+    }
+
+    for (const email of designatedEmails) {
+      const matchedUser = allAuthUsers.find(
+        (u: any) => u.email?.toLowerCase() === email
+      )
+      if (matchedUser && !rakshaks.some(existing => existing.profile_id === matchedUser.id)) {
+        rakshaks.push({ profile_id: matchedUser.id })
+        console.log(`[SOS Dispatch] Added email recipient ${email} (${matchedUser.id}) for in-app alert`)
+      }
+    }
+
     // Ensure the testing session user receives the in-app alert delivery so the popup and siren trigger
     if (user?.id && !rakshaks.some(existing => existing.profile_id === user.id)) {
       rakshaks.push({ profile_id: user.id })
@@ -425,7 +449,7 @@ Deno.serve(async (request: Request) => {
     }
 
     // Rakshak deliveries: channel 'push' with status 'queued' triggers in-app Realtime notification in App.tsx
-    for (const r of rakshakDetails) {
+    for (const r of rakshaks) {
       deliveriesToInsert.push({
         sos_event_id: event.id,
         recipient_type: 'rakshak',

@@ -432,42 +432,85 @@ export function App() {
     };
   }, [page]);
 
-  // Rakshak side: Listen for incoming SOS deliveries
+  // Rakshak side: Listen for incoming SOS deliveries (Realtime + Polling fallback)
   useEffect(() => {
     if (!user || !supabase) return;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let lastCheckedDeliveryId: string | null = null;
 
+    const handleNewDelivery = async (delivery: any) => {
+      try {
+        const sosDetails = await getSosEventDetails(delivery.sos_event_id);
+        // Show modal if the event is active, provided this tab is not actively broadcasting in SOSOverlay mode
+        if (sosDetails && sosDetails.status === 'active' && (!sos || sosDetails.user_id !== user.id)) {
+          console.log('[Rakshak Alert] Showing IncomingSosModal for event:', delivery.sos_event_id);
+          setIncomingSosAlert(sosDetails);
+          if (notifications && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('🚨 URGENT: SOS Alert!', { body: 'Someone nearby needs your help.', icon: '/favicon.ico' });
+          }
+        } else if (sos && sosDetails?.user_id === user.id) {
+          console.log('[Rakshak Alert] Active in SOS broadcast mode; SOSOverlay is showing');
+        }
+      } catch (err) {
+        console.error('[Rakshak Alert] Error fetching SOS details:', err);
+      }
+    };
+
+    // 1. Realtime subscription
     const channel = supabase
       .channel('rakshak-sos-alerts')
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'sos_event_deliveries',
           filter: `rakshak_id=eq.${user.id}`,
         },
         async (payload) => {
-          if (payload.new.recipient_type === 'rakshak' && (payload.new.status === 'queued' || payload.new.status === 'delivered')) {
-            try {
-              const sosDetails = await getSosEventDetails(payload.new.sos_event_id);
-              if (sosDetails.status === 'active') {
-                setIncomingSosAlert(sosDetails);
-                if (notifications && 'Notification' in window && Notification.permission === 'granted') {
-                  new Notification('🚨 URGENT: SOS Alert!', { body: 'Someone nearby needs your help.', icon: '/favicon.ico' });
-                }
-              }
-            } catch (err) {
-              console.error('Error fetching incoming SOS details', err);
-            }
+          console.log('[Realtime] Received sos_event_deliveries change:', payload);
+          const newRecord = payload.new as any;
+          if (newRecord && newRecord.recipient_type === 'rakshak' && (newRecord.status === 'queued' || newRecord.status === 'delivered')) {
+            lastCheckedDeliveryId = newRecord.id;
+            await handleNewDelivery(newRecord);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[Realtime] rakshak-sos-alerts channel status:', status);
+      });
+
+    // 2. Polling fallback: check every 4s for any recent unchecked deliveries
+    //    Guarantees alert popup displays promptly even if websocket has reconnection delay
+    pollTimer = setInterval(async () => {
+      if (sos || incomingSosAlert) return; // Skip if already in SOS broadcast or showing modal
+      try {
+        const query = supabase
+          .from('sos_event_deliveries')
+          .select('id, sos_event_id, recipient_type, status')
+          .eq('rakshak_id', user.id)
+          .eq('recipient_type', 'rakshak')
+          .in('status', ['queued', 'delivered'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        const { data, error } = await query;
+        if (error || !data || data.length === 0) return;
+        if (data[0].id !== lastCheckedDeliveryId) {
+          lastCheckedDeliveryId = data[0].id;
+          console.log('[Poll Fallback] Found new delivery:', data[0].id);
+          await handleNewDelivery(data[0]);
+        }
+      } catch {
+        // Silent fail for polling
+      }
+    }, 4000);
 
     return () => {
       supabase.removeChannel(channel);
+      if (pollTimer) clearInterval(pollTimer);
     };
-  }, [user, notifications]);
+  }, [user, notifications, sos, incomingSosAlert]);
 
   // User side: Listen for SOS acceptance by Rakshak
   useEffect(() => {
@@ -608,17 +651,8 @@ export function App() {
       if (dispatchResult?.deliveries) {
         setDeliveries(dispatchResult.deliveries as SosDelivery[]);
       }
-      try {
-        const details = await getSosEventDetails(event.id);
-        if (details && details.status === 'active') {
-          setIncomingSosAlert(details);
-          if (notifications && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('🚨 URGENT: SOS Alert!', { body: `${profileDisplayName || user.email || 'Someone'} needs immediate assistance nearby.`, icon: '/favicon.ico' });
-          }
-        }
-      } catch (alertErr) {
-        console.warn('Could not trigger immediate alert modal:', alertErr);
-      }
+      // Note: The caller sees SOSOverlay, NOT IncomingSosModal.
+      // IncomingSosModal is only for other users (Rakshaks) via Realtime subscription.
     } catch (err) {
       console.error('[SOS Trigger Error]:', err);
       notify('SOS is active, but delivery is pending. Keep this screen open.');

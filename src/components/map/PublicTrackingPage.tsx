@@ -142,8 +142,8 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
         // At scale: 1,000 viewers × 5s = 12,000 req/min.
         // Stale slowdown reduces that significantly for idle/arrived journeys.
         // ─────────────────────────────────────────────────────────────────────
-        const isArrived = responseData.status === 'arrived' || responseData.status === 'cancelled';
-        if (isArrived) {
+        const isTerminal = responseData.status === 'arrived' || responseData.status === 'cancelled' || responseData.status === 'safe';
+        if (isTerminal) {
           // Terminal: stop continuous polling
           return;
         }
@@ -439,8 +439,10 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     return mins > 0 ? `${hrs}hr ${mins}min` : `${hrs}hr`;
   };
 
-  const isSos = data.status === 'sos' || data.type === 'sos';
-  const isArrived = data.status === 'arrived';
+  const isSos = data.type === 'sos';
+  const isSosEnded = isSos && (data.status === 'safe' || data.status === 'cancelled' || data.status === 'resolved');
+  const isArrived = data.status === 'arrived' || (!isSos && (data.status === 'safe' || data.status === 'cancelled'));
+
   // If SOS, we want the distance/ETA between Viewer and User, NOT the User's Journey ETA
   let effectiveEtaSeconds = isSos 
     ? (calculatedRoute?.durationSeconds ?? null)
@@ -451,7 +453,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
     : (calculatedRoute?.distanceMeters ?? data.remaining_distance_meters ?? null);
 
   // Fallback to live straight-line distance for SOS if OSRM route is missing/pending
-  if (isSos && viewerLocation && !effectiveDistanceMeters) {
+  if (isSos && viewerLocation && !effectiveDistanceMeters && data.latitude && data.longitude) {
     const R = 6371e3; // metres
     const lat1 = viewerLocation.lat * Math.PI/180;
     const lat2 = (data.latitude as number) * Math.PI/180;
@@ -482,19 +484,26 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
       <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 1000, background: 'rgba(255, 255, 255, 0.94)', backdropFilter: 'blur(10px)', borderRadius: '14px', padding: '12px 14px', boxShadow: '0 4px 18px rgba(0,0,0,0.08)', border: '1px solid rgba(226, 232, 240, 0.8)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
           <span style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Live Safety Tracking
+            {isSos ? (isSosEnded ? 'Emergency Resolved' : 'Live Emergency SOS Tracking') : 'Live Safety Tracking'}
           </span>
 
-          {/* Unified Freshness Badge */}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: freshness.bg, color: freshness.color }}>
-            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: freshness.dotColor }}></span>
-            {freshness.badgeText}
-          </span>
+          {/* Unified Freshness / Resolution Badge */}
+          {isSosEnded ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: '#dcfce7', color: '#15803d' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#22c55e' }}></span>
+              Marked Safe
+            </span>
+          ) : (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '12px', background: freshness.bg, color: freshness.color }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: freshness.dotColor }}></span>
+              {freshness.badgeText}
+            </span>
+          )}
         </div>
 
         <h1 style={{ fontSize: '16px', fontWeight: 800, color: '#1e293b', margin: '2px 0 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>{data.userName}&apos;s Journey</span>
-          {isArrived && <CheckCircle2 size={16} color="#16a34a" />}
+          <span>{data.userName}&apos;s {isSos ? 'Emergency SOS' : 'Journey'}</span>
+          {(isArrived || isSosEnded) && <CheckCircle2 size={16} color="#16a34a" />}
         </h1>
 
         {data.destination_name && (
@@ -504,7 +513,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           </div>
         )}
 
-        {/* Prominent Estimated Arrival Callout for Viewer */}
+        {/* Prominent Estimated Arrival Callout for Journey Viewer */}
         {!isArrived && !isSos && (
           <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f0fdf4', borderRadius: '10px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: '12px', fontWeight: 600, color: '#15803d', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -524,12 +533,23 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
       </div>
 
       {/* ── Emergency SOS Alert Banner if Active ── */}
-      {isSos && (
+      {isSos && !isSosEnded && (
         <div style={{ position: 'absolute', top: 96, left: 12, right: 12, zIndex: 1000, background: '#fee2e2', border: '1.5px solid #ef4444', borderRadius: '12px', padding: '12px 14px', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 14px rgba(239, 68, 68, 0.2)' }}>
           <ShieldAlert size={24} style={{ flexShrink: 0 }} />
           <div>
-            <b style={{ fontSize: '13px', display: 'block' }}>EMERGENCY SOS TRIGGERED</b>
-            <small style={{ fontSize: '11px' }}>The user triggered an urgent safety alert from this journey.</small>
+            <b style={{ fontSize: '13px', display: 'block' }}>EMERGENCY SOS ACTIVE</b>
+            <small style={{ fontSize: '11px' }}>{data.userName} triggered an urgent emergency alert and needs assistance.</small>
+          </div>
+        </div>
+      )}
+
+      {/* ── Emergency SOS Resolved Banner if Safe/Cancelled ── */}
+      {isSos && isSosEnded && (
+        <div style={{ position: 'absolute', top: 96, left: 12, right: 12, zIndex: 1000, background: '#f0fdf4', border: '1.5px solid #22c55e', borderRadius: '12px', padding: '12px 14px', color: '#15803d', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 14px rgba(34, 197, 94, 0.2)' }}>
+          <CheckCircle2 size={24} style={{ flexShrink: 0, color: '#16a34a' }} />
+          <div>
+            <b style={{ fontSize: '13px', display: 'block' }}>USER MARKED SAFE</b>
+            <small style={{ fontSize: '11px' }}>{data.userName} has marked themselves safe. Live emergency tracking has concluded.</small>
           </div>
         </div>
       )}
@@ -540,11 +560,11 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
       {/* ── Bottom Floating Statistics Sheet ── */}
       <div style={{ position: 'absolute', bottom: 16, left: 12, right: 12, zIndex: 1000, background: '#ffffff', borderRadius: '16px', padding: '14px 16px', boxShadow: '0 6px 24px rgba(0,0,0,0.12)', border: '1px solid #e2e8f0' }}>
         {/* Status Pill */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', padding: '6px 10px', borderRadius: '20px', background: isSos ? '#fee2e2' : isArrived ? '#dcfce7' : '#f5f3ff', color: isSos ? '#b91c1c' : isArrived ? '#15803d' : '#6366f1', fontSize: '12px', fontWeight: 700, width: 'fit-content' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSos ? '#ef4444' : isArrived ? '#22c55e' : '#6366f1' }}></span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px', padding: '6px 10px', borderRadius: '20px', background: isSos ? (isSosEnded ? '#dcfce7' : '#fee2e2') : isArrived ? '#dcfce7' : '#f5f3ff', color: isSos ? (isSosEnded ? '#15803d' : '#b91c1c') : isArrived ? '#15803d' : '#6366f1', fontSize: '12px', fontWeight: 700, width: 'fit-content' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSos ? (isSosEnded ? '#22c55e' : '#ef4444') : isArrived ? '#22c55e' : '#6366f1' }}></span>
           <span>
             {isSos
-              ? 'Emergency Alert Active'
+              ? (isSosEnded ? 'Emergency Resolved · User is Safe' : 'Emergency Alert Active')
               : isArrived
               ? 'Arrived safely at destination'
               : etaDisplay !== '—'
@@ -553,42 +573,71 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
           </span>
         </div>
 
-        {/* 3 Metric Columns */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
-          <div>
-            <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-              {etaDisplay}
-            </span>
-            <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>ETA</small>
-          </div>
-
-          <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
-
-          <div>
-            <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
-              {distDisplay}
-            </span>
-            <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance</small>
-          </div>
-
-          <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
-                {data.transport_mode === 'driving' ? 'Driving' : data.transport_mode === 'cycling' ? 'Cycling' : 'Walking'}
+        {/* Metric Columns: SOS vs Journey */}
+        {isSos ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+            <div>
+              <span style={{ fontSize: '16px', fontWeight: 800, color: isSosEnded ? '#16a34a' : '#ef4444', display: 'block' }}>
+                {isSosEnded ? 'Safe' : 'Active'}
               </span>
-              {data.transport_mode === 'driving' ? <Car size={15} color="#64748b" /> : data.transport_mode === 'cycling' ? <Bike size={15} color="#64748b" /> : <Footprints size={15} color="#64748b" />}
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Alert Status</small>
             </div>
-            <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Mode</small>
+
+            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+
+            <div>
+              <span style={{ fontSize: '16px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
+                {distDisplay}
+              </span>
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance To User</small>
+            </div>
+
+            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+
+            <div>
+              <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', display: 'block' }}>
+                {isSosEnded ? 'Resolved' : 'High Priority'}
+              </span>
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Severity</small>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+            <div>
+              <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
+                {etaDisplay}
+              </span>
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>ETA</small>
+            </div>
+
+            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+
+            <div>
+              <span style={{ fontSize: '18px', fontWeight: 800, color: '#6366f1', display: 'block' }}>
+                {distDisplay}
+              </span>
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Distance</small>
+            </div>
+
+            <div style={{ width: '1px', height: '28px', background: '#f1f5f9' }} />
+
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b' }}>
+                  {data.transport_mode === 'driving' ? 'Driving' : data.transport_mode === 'cycling' ? 'Cycling' : 'Walking'}
+                </span>
+                {data.transport_mode === 'driving' ? <Car size={15} color="#64748b" /> : data.transport_mode === 'cycling' ? <Bike size={15} color="#64748b" /> : <Footprints size={15} color="#64748b" />}
+              </div>
+              <small style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase' }}>Mode</small>
+            </div>
+          </div>
+        )}
 
         {/* Freshness Subtitle */}
         <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '10px', textAlign: 'right', display: 'flex', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSos ? '#ef4444' : '#6366f1' }}></div> User
+               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isSos ? (isSosEnded ? '#22c55e' : '#ef4444') : '#6366f1' }}></div> User
              </span>
              {viewerLocation && (
                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -596,7 +645,7 @@ export function PublicTrackingPage({ trackingId }: { trackingId: string }) {
                </span>
              )}
           </div>
-          <span>{freshness.label}</span>
+          <span>{isSosEnded ? 'Session closed' : freshness.label}</span>
         </div>
       </div>
     </div>
