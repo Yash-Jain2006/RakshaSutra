@@ -290,6 +290,8 @@ export async function getSosEventDetails(eventId: string) {
       latitude,
       longitude,
       status,
+      started_at,
+      created_at,
       profiles:user_id ( display_name )
     `)
     .eq("id", eventId)
@@ -300,7 +302,7 @@ export async function getSosEventDetails(eventId: string) {
   // Fallback if the join fails due to RLS or foreign key alias
   const { data: fallback, error: fbErr } = await client
     .from("sos_events")
-    .select("id, user_id, latitude, longitude, status")
+    .select("id, user_id, latitude, longitude, status, started_at, created_at")
     .eq("id", eventId)
     .single();
 

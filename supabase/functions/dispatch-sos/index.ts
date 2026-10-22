@@ -250,10 +250,14 @@ Deno.serve(async (request: Request) => {
 
     // Emergency Failsafe: if client token was expired or missing, trust event owner from DB
     if (!user && event.user_id) {
-      const { data: ownerUser } = await admin.auth.admin.getUserById(event.user_id).catch(() => ({ data: null }))
-      if (ownerUser?.user) {
-        user = ownerUser.user
-        console.log(`[SOS Dispatch] Authenticated via event owner fallback: ${user.id} (${user.email})`)
+      try {
+        const { data: ownerUser } = await admin.auth.admin.getUserById(event.user_id)
+        if (ownerUser?.user) {
+          user = ownerUser.user
+          console.log(`[SOS Dispatch] Authenticated via event owner fallback: ${user.id} (${user.email})`)
+        }
+      } catch (authErr) {
+        console.warn('[SOS Dispatch] getUserById fallback warning:', authErr)
       }
     }
 
@@ -329,12 +333,18 @@ Deno.serve(async (request: Request) => {
     // -------------------------------------------------------------
     // 2. Discover nearby Rakshaks and register deliveries
     // -------------------------------------------------------------
-    const { data: nearbyRakshaks } = await admin.rpc('find_nearby_rakshaks', {
-      p_latitude: event.latitude,
-      p_longitude: event.longitude,
-      p_radius_meters: 15000,
-      p_limit: 15,
-    }).catch(() => ({ data: [] }))
+    let nearbyRakshaks: any[] = []
+    try {
+      const { data, error } = await admin.rpc('find_nearby_rakshaks', {
+        p_latitude: event.latitude,
+        p_longitude: event.longitude,
+        p_radius_meters: 15000,
+        p_limit: 15,
+      })
+      if (!error && data) nearbyRakshaks = data
+    } catch (rpcErr) {
+      console.warn('[SOS Dispatch] find_nearby_rakshaks RPC warning:', rpcErr)
+    }
 
     let rakshaks: Array<{ profile_id: string }> = []
     if (nearbyRakshaks && nearbyRakshaks.length > 0) {
@@ -383,10 +393,9 @@ Deno.serve(async (request: Request) => {
       }
     }
 
-    // Ensure the testing session user receives the in-app alert delivery so the popup and siren trigger
-    if (user?.id && !rakshaks.some(existing => existing.profile_id === user.id)) {
-      rakshaks.push({ profile_id: user.id })
-    }
+    // Strictly exclude the victim / caller so they NEVER receive a Rakshak alert for their own SOS!
+    // The SOS alert is only for nearby volunteers and responders (Rakshaks).
+    rakshaks = rakshaks.filter(r => r.profile_id !== user.id)
 
     // Fetch Rakshak profile details (names and phones)
     const rakshakIds = rakshaks.map(r => r.profile_id)
@@ -448,32 +457,63 @@ Deno.serve(async (request: Request) => {
       }
     }
 
-    // Rakshak deliveries: channel 'push' with status 'queued' triggers in-app Realtime notification in App.tsx
+    // Rakshak deliveries: channel 'in_app' with status 'queued' triggers in-app Realtime notification in App.tsx
     for (const r of rakshaks) {
       deliveriesToInsert.push({
         sos_event_id: event.id,
         recipient_type: 'rakshak',
         contact_id: null,
         rakshak_id: r.profile_id,
-        channel: 'push',
+        channel: 'in_app',
         status: 'queued',
         delivered_at: new Date().toISOString(),
       })
     }
 
-    // Insert deliveries into DB
+    // Insert deliveries into DB safely
     let insertedDeliveries: any[] = []
     if (deliveriesToInsert.length > 0) {
-      const { data: inserted, error: insErr } = await admin
-        .from('sos_event_deliveries')
-        .insert(deliveriesToInsert)
-        .select('*')
+      // Validate that all rakshak_ids exist in profiles before inserting
+      const rakshakIdsToCheck = deliveriesToInsert
+        .filter(d => d.recipient_type === 'rakshak' && d.rakshak_id)
+        .map(d => d.rakshak_id)
 
-      if (!insErr && inserted) {
-        insertedDeliveries = inserted
-      } else {
-        console.warn('[SOS Dispatch] Delivery insert warning:', insErr?.message)
-        insertedDeliveries = deliveriesToInsert.map((d, i) => ({ ...d, id: `deliv-${i}` }))
+      let validRakshakIds = new Set<string>()
+      if (rakshakIdsToCheck.length > 0) {
+        const { data: valProfiles } = await admin
+          .from('profiles')
+          .select('id')
+          .in('id', rakshakIdsToCheck)
+        if (valProfiles) {
+          validRakshakIds = new Set(valProfiles.map(p => p.id))
+        }
+      }
+
+      // Filter out any deliveries with missing profiles
+      const safeDeliveries = deliveriesToInsert.filter(d => {
+        if (d.recipient_type === 'rakshak') {
+          return d.rakshak_id && validRakshakIds.has(d.rakshak_id)
+        }
+        return true
+      })
+
+      if (safeDeliveries.length > 0) {
+        const { data: inserted, error: insErr } = await admin
+          .from('sos_event_deliveries')
+          .insert(safeDeliveries)
+          .select('*')
+
+        if (!insErr && inserted) {
+          insertedDeliveries = inserted
+          console.log(`[SOS Dispatch] Successfully inserted ${inserted.length} delivery records into DB`)
+        } else {
+          console.warn('[SOS Dispatch] Batch delivery insert warning:', insErr?.message)
+          // Fallback: insert one by one so partial failures never ruin the entire batch
+          for (const d of safeDeliveries) {
+            const { data: one, error: oneErr } = await admin.from('sos_event_deliveries').insert(d).select('*').maybeSingle()
+            if (!oneErr && one) insertedDeliveries.push(one)
+          }
+        }
       }
     }
 

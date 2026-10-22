@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, Check, Phone, ShieldCheck, Users, Volume2, X, StopCircle } from 'lucide-react';
+import { Camera, Check, Phone, ShieldCheck, Users, Volume2, X, StopCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import type { EmergencyContact, SosDelivery } from '../../types/models';
 import { saveSosEvidenceToLocal } from '../../utils/sosEvidenceStorage';
 
@@ -19,6 +19,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
   isOffline = false,
 }) => {
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [rakshaksExpanded, setRakshaksExpanded] = useState(false);
   const formattedTime = `${String(Math.floor(elapsed / 60)).padStart(2, '0')}:${String(elapsed % 60).padStart(2, '0')}`;
 
   // Filter deliveries by type
@@ -285,46 +286,106 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
           </i>
         </div>
 
-        {/* Rakshak Matching Status */}
+        {/* Rakshak Matching Status - Collapsed into a single tab */}
         {rakshakDeliveries.length > 0 ? (
-          (() => {
-            const named = rakshakDeliveries.filter((d) => d.recipient_name);
-            const unnamed = rakshakDeliveries.filter((d) => !d.recipient_name);
-            return (
-              <>
-                {named.map((delivery) => (
-                  <div className="sos-item" key={delivery.id}>
-                    <span>
-                      <ShieldCheck size={18} />
-                    </span>
-                    <div>
-                      <b>{delivery.recipient_name}</b>
-                      <small>{delivery.recipient_sub || 'Verified Volunteer'}</small>
+          <div className="sos-rakshak-container" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+            <div
+              className="sos-item"
+              onClick={() => setRakshaksExpanded(!rakshaksExpanded)}
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+              role="button"
+              tabIndex={0}
+              aria-expanded={rakshaksExpanded}
+            >
+              <span>
+                <ShieldCheck size={18} />
+              </span>
+              <div>
+                <b style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  {rakshakDeliveries.length} Nearby Rakshak{rakshakDeliveries.length > 1 ? 's' : ''} Notified
+                  {rakshaksExpanded ? (
+                    <ChevronUp size={13} style={{ opacity: 0.7 }} />
+                  ) : (
+                    <ChevronDown size={13} style={{ opacity: 0.7 }} />
+                  )}
+                </b>
+                <small>
+                  {rakshakDeliveries
+                    .map((d) => d.recipient_name || 'Verified Volunteer')
+                    .join(' · ')}
+                </small>
+              </div>
+              <i
+                className={
+                  rakshakDeliveries.some((d) => d.status === 'acknowledged')
+                    ? 'delivered'
+                    : rakshakDeliveries.some((d) => d.status === 'delivered' || d.status === 'sent')
+                      ? 'sent'
+                      : 'queued'
+                }
+              >
+                {rakshakDeliveries.some((d) => d.status === 'acknowledged')
+                  ? 'Accepted'
+                  : rakshakDeliveries.some((d) => d.status === 'delivered' || d.status === 'sent')
+                    ? 'Alert Sent'
+                    : 'Queued'}
+              </i>
+            </div>
+
+            {/* Expandable breakdown when tapped */}
+            {rakshaksExpanded && (
+              <div
+                className="sos-rakshak-expanded-list"
+                style={{
+                  padding: '4px 0 6px 43px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+                }}
+              >
+                {rakshakDeliveries.map((delivery) => (
+                  <div
+                    key={delivery.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '4px 0',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          color: '#f8fafc',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {delivery.recipient_name || 'Verified Volunteer'}
+                      </span>
+                      <span style={{ fontSize: '8px', color: 'rgba(255, 255, 255, 0.4)' }}>
+                        {delivery.recipient_sub || 'Verified Volunteer'}
+                      </span>
                     </div>
-                    <i className={delivery.status === 'delivered' ? 'sent' : delivery.status}>
+                    <i
+                      className={delivery.status === 'delivered' ? 'sent' : delivery.status}
+                      style={{ fontSize: '8px', padding: '2px 6px', borderRadius: '4px' }}
+                    >
                       {delivery.status === 'acknowledged'
                         ? 'Accepted'
-                        : (delivery.status === 'sent' || delivery.status === 'delivered')
+                        : delivery.status === 'sent' || delivery.status === 'delivered'
                           ? 'Alert Sent'
                           : 'Queued'}
                     </i>
                   </div>
                 ))}
-                {unnamed.length > 0 && (
-                  <div className="sos-item">
-                    <span>
-                      <ShieldCheck size={18} />
-                    </span>
-                    <div>
-                      <b>{unnamed.length} Nearby Rakshak{unnamed.length > 1 ? 's' : ''}</b>
-                      <small>Searching verified volunteers nearby...</small>
-                    </div>
-                    <i className="queued">Searching</i>
-                  </div>
-                )}
-              </>
-            );
-          })()
+              </div>
+            )}
+          </div>
         ) : (
           <div className="sos-item no-rakshaks">
             <span>
@@ -332,9 +393,7 @@ export const SOSOverlay: React.FC<SOSOverlayProps> = ({
             </span>
             <div>
               <b>Rakshak Match Status</b>
-              <small>
-                Searching nearest verified Rakshaks within 2.5 km...
-              </small>
+              <small>Searching nearest verified Rakshaks within 2.5 km...</small>
             </div>
             <i className="queued">Searching</i>
           </div>

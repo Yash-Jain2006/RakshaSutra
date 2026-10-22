@@ -214,7 +214,21 @@ export function App() {
     }
   };
 
-  const handleDeclineSos = () => {
+  const handleDeclineSos = async () => {
+    if (incomingSosAlert && user && supabase) {
+      try {
+        await supabase
+          .from('sos_event_deliveries')
+          .update({
+            status: 'declined',
+            updated_at: new Date().toISOString()
+          })
+          .eq('sos_event_id', incomingSosAlert.id)
+          .eq('rakshak_id', user.id);
+      } catch (delErr) {
+        console.warn('Could not update delivery status on decline:', delErr);
+      }
+    }
     setIncomingSosAlert(null);
   };
 
@@ -441,15 +455,26 @@ export function App() {
     const handleNewDelivery = async (delivery: any) => {
       try {
         const sosDetails = await getSosEventDetails(delivery.sos_event_id);
-        // Show modal if the event is active, provided this tab is not actively broadcasting in SOSOverlay mode
-        if (sosDetails && sosDetails.status === 'active' && (!sos || sosDetails.user_id !== user.id)) {
+        if (!sosDetails) return;
+
+        // Freshness verification: Event must be active AND started recently (within 10 minutes)
+        const eventStartTime = new Date(sosDetails.started_at || sosDetails.created_at || 0).getTime();
+        const isFresh = (Date.now() - eventStartTime) < 10 * 60 * 1000;
+
+        // CRITICAL: IncomingSosModal is ONLY for Rakshaks/responders, NEVER for the caller who requested SOS!
+        // And ONLY when the SOS is actively happening right now!
+        if (sosDetails.status === 'active' && isFresh && sosDetails.user_id !== user.id) {
           console.log('[Rakshak Alert] Showing IncomingSosModal for event:', delivery.sos_event_id);
           setIncomingSosAlert(sosDetails);
           if (notifications && 'Notification' in window && Notification.permission === 'granted') {
             new Notification('🚨 URGENT: SOS Alert!', { body: 'Someone nearby needs your help.', icon: '/favicon.ico' });
           }
-        } else if (sos && sosDetails?.user_id === user.id) {
-          console.log('[Rakshak Alert] Active in SOS broadcast mode; SOSOverlay is showing');
+        } else {
+          console.log('[Rakshak Alert] Skipping alert:', {
+            active: sosDetails.status === 'active',
+            isFresh,
+            isOtherUser: sosDetails.user_id !== user.id
+          });
         }
       } catch (err) {
         console.error('[Rakshak Alert] Error fetching SOS details:', err);
@@ -480,17 +505,19 @@ export function App() {
         console.log('[Realtime] rakshak-sos-alerts channel status:', status);
       });
 
-    // 2. Polling fallback: check every 4s for any recent unchecked deliveries
+    // 2. Polling fallback: check every 4s for fresh deliveries created in the last 2 minutes
     //    Guarantees alert popup displays promptly even if websocket has reconnection delay
     pollTimer = setInterval(async () => {
       if (sos || incomingSosAlert) return; // Skip if already in SOS broadcast or showing modal
       try {
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
         const query = supabase
           .from('sos_event_deliveries')
-          .select('id, sos_event_id, recipient_type, status')
+          .select('id, sos_event_id, recipient_type, status, created_at')
           .eq('rakshak_id', user.id)
           .eq('recipient_type', 'rakshak')
           .in('status', ['queued', 'delivered'])
+          .gt('created_at', twoMinutesAgo)
           .order('created_at', { ascending: false })
           .limit(1);
 
